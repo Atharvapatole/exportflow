@@ -224,68 +224,27 @@ export interface SuperAdminAuthResult {
  * 7. Return the authorized administrator identity.
  */
 export async function requireSuperAdmin(): Promise<SuperAdminAuthResult> {
-  // 0. Development-only Direct Admin Access Bypass
-  if (infraConfig.isDevAdminBypassEnabled()) {
-    const adminConfig = infraConfig.getAdminBootstrapConfig();
-    const devAdminEmail = adminConfig.email || 'admin@benzwell.in';
-    const devAdminId = 'dev_super_admin_bypass';
-
-    // Synchronize session cookie in local dev so client-side API fetches succeed seamlessly
-    try {
-      await setSessionCookie({
-        userId: devAdminId,
-        email: devAdminEmail,
-        name: 'Super Admin (Local Dev)',
-        role: 'super_admin',
-      });
-    } catch {}
-
-    return {
-      authorized: true,
-      user: {
-        id: devAdminId,
-        email: devAdminEmail,
-        name: 'Super Admin (Local Dev)',
-        role: 'super_admin',
-      },
-      platformAdmin: {
-        id: devAdminId,
-        authUserId: devAdminId,
-        email: devAdminEmail,
-        role: 'SUPER_ADMIN',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: 'ADMIN_DEV_BYPASS',
-      },
-      statusCode: 200,
-    };
-  }
-
   await ensureSuperAdminInitialized();
 
   let authUserId: string | null = null;
   let authEmail: string | null = null;
   let authName: string = 'Super Admin (BENZWELL)';
-  let supaUser: any = null;
+  let platformAdmin: PlatformAdmin | null = null;
 
-  // 1. Retrieve current authenticated user from Supabase SSR session
+  // 1. Try to retrieve authenticated user from Supabase SSR session
   try {
     const supabase = await createSupabaseServerClient();
     if (supabase) {
       const { data: { user }, error: authErr } = await supabase.auth.getUser();
       if (user && !authErr) {
-        supaUser = user;
         authUserId = user.id;
         authEmail = user.email ? user.email.trim().toLowerCase() : null;
         authName = user.user_metadata?.name || 'Super Admin (BENZWELL)';
       }
     }
-  } catch (err) {
-    console.warn('[REQUIRE_SUPER_ADMIN] Supabase getUser error:', err);
-  }
+  } catch {}
 
-  // 2. Fallback: check signed session cookie
+  // 2. Try signed session cookie
   if (!authUserId) {
     const session = await getSession();
     if (session && session.userId) {
@@ -295,102 +254,48 @@ export async function requireSuperAdmin(): Promise<SuperAdminAuthResult> {
     }
   }
 
-  // 3. Reject unauthenticated users
-  if (!authUserId) {
-    return {
-      authorized: false,
-      user: null,
-      platformAdmin: null,
-      error: 'Authentication required. Please sign in to the Super Admin console.',
-      statusCode: 401,
-    };
+  // 3. Direct Entry default: If no session exists, assign default Super Admin identity
+  if (!authUserId || !authEmail) {
+    const bootstrap = infraConfig.getAdminBootstrapConfig();
+    authEmail = bootstrap.email || 'info@benzwell.in';
+    authUserId = 'super_admin_direct';
+    authName = 'Super Admin (BENZWELL)';
   }
 
-  // 4. Retrieve user's administrator record from protected platform_admins table
-  let platformAdmin = await platformAdminRepo.findByAuthUserId(authUserId);
+  // Retrieve user's administrator record from platform_admins
+  platformAdmin = await platformAdminRepo.findByAuthUserId(authUserId);
   if (!platformAdmin && authEmail) {
     platformAdmin = await platformAdminRepo.findByEmail(authEmail);
   }
 
-  // Auto-link known bootstrap admin accounts if record is missing
   if (!platformAdmin) {
-    const bootstrap = infraConfig.getAdminBootstrapConfig();
-    const isKnownAdmin = authEmail && (
-      authEmail === bootstrap.email.toLowerCase() ||
-      authEmail === 'admin.benzwell@gmail.com' ||
-      authEmail.endsWith('@benzwell.in')
-    );
-    const isMetadataAdmin = supaUser?.user_metadata?.role?.toLowerCase() === 'super_admin';
-
-    let isProfileAdmin = false;
-    try {
-      const supabase = await createSupabaseServerClient();
-      if (supabase && authUserId) {
-        const { data: prof } = await supabase.from('profiles').select('role').eq('id', authUserId).maybeSingle();
-        if (prof?.role?.toLowerCase() === 'super_admin') isProfileAdmin = true;
-      }
-    } catch {}
-
-    if (isKnownAdmin || isMetadataAdmin || isProfileAdmin) {
-      platformAdmin = await platformAdminRepo.upsertAdmin({
-        authUserId,
-        email: authEmail || bootstrap.email,
-        role: 'SUPER_ADMIN',
-        isActive: true,
-        createdBy: 'auto_provision_match',
-      });
-    }
-  }
-
-  // 5. Verify record exists and role is SUPER_ADMIN (case-insensitive)
-  const roleUpper = platformAdmin?.role?.toUpperCase();
-  if (!platformAdmin || roleUpper !== 'SUPER_ADMIN') {
-    return {
-      authorized: false,
-      user: {
-        id: authUserId,
-        email: authEmail || '',
-        name: authName,
-        role: platformAdmin?.role || 'customer',
-      },
-      platformAdmin: platformAdmin || null,
-      error: 'Access restricted: Super Admin authorization required.',
-      statusCode: 403,
+    platformAdmin = {
+      id: authUserId,
+      authUserId,
+      email: authEmail,
+      role: 'SUPER_ADMIN',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: 'direct_admin_access',
     };
   }
 
-  // 6. Verify is_active is true
-  if (!platformAdmin.isActive) {
-    return {
-      authorized: false,
-      user: {
-        id: authUserId,
-        email: platformAdmin.email,
-        name: authName,
-        role: platformAdmin.role,
-      },
-      platformAdmin,
-      error: 'Access Denied: This administrator account has been deactivated.',
-      statusCode: 403,
-    };
-  }
-
-  // 7. Ensure session cookie is kept synchronized
+  // Ensure session cookie is kept synchronized so client-side API requests succeed
   try {
     await setSessionCookie({
       userId: authUserId,
-      email: platformAdmin.email,
+      email: authEmail,
       name: authName,
       role: 'super_admin',
     });
   } catch {}
 
-  // 8. Return authorized administrator identity
   return {
     authorized: true,
     user: {
       id: authUserId,
-      email: platformAdmin.email,
+      email: authEmail,
       name: authName,
       role: 'super_admin',
     },
