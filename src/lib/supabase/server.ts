@@ -9,7 +9,12 @@ export async function createClient() {
     return null;
   }
 
-  const cookieStore = await cookies();
+  let cookieStore: any;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    return null;
+  }
 
   return createServerClient(config.url, config.anonKey, {
     cookies: {

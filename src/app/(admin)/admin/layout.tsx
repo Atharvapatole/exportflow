@@ -1,8 +1,10 @@
 import React from 'react';
 import Link from 'next/link';
-import { getAdminContext } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/auth';
+import { infraConfig } from '@/config/infrastructure';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { AdminHeader } from '@/components/layout/AdminHeader';
+import { SuperAdminLoginForm } from '@/components/admin/SuperAdminLoginForm';
 import { ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -13,29 +15,49 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const ctx = await getAdminContext();
+  // 1. LOCAL DEVELOPMENT DIRECT ADMIN BYPASS
+  // When running locally in development with ADMIN_DEV_BYPASS=true,
+  // directly open the Super Admin Dashboard without any authorization screen.
+  if (infraConfig.isDevAdminBypassEnabled()) {
+    return (
+      <div className="flex min-h-screen bg-[#070E18] text-slate-100">
+        <AdminSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <AdminHeader adminEmail="admin@benzwell.in (Local Dev Bypass)" />
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto">{children}</main>
+        </div>
+      </div>
+    );
+  }
 
-  // If not authorized (only applicable in production when an unauthorized user navigates directly to /admin)
-  if (!ctx || !ctx.isSuperAdmin) {
+  // 2. PRODUCTION / NORMAL SECURE AUTHORIZATION FLOW
+  const authRes = await requireSuperAdmin();
+
+  // If visitor is unauthenticated, show Super Admin Login form
+  if (!authRes.authorized && authRes.statusCode === 401) {
     return (
       <div className="min-h-screen bg-[#040A12] flex flex-col justify-center items-center p-4">
-        <div className="w-full max-w-md bg-[#0B1524] border border-rose-600/40 rounded-2xl p-8 text-center space-y-4 shadow-2xl shadow-black/80">
-          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto">
-            <ShieldAlert className="w-7 h-7" />
+        <SuperAdminLoginForm />
+      </div>
+    );
+  }
+
+  // If authenticated customer without Super Admin role: minimal access denied response
+  if (!authRes.authorized) {
+    return (
+      <div className="min-h-screen bg-[#040A12] flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-sm bg-[#0B1524] border border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+            <ShieldAlert className="w-6 h-6" />
           </div>
-          <h2 className="text-lg font-bold text-white">403 — Super Admin Access Required</h2>
+          <h2 className="text-base font-semibold text-white">Access Denied</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            This area is strictly restricted to platform super administrators. Normal customer accounts cannot access the management console.
+            You do not have permission to access the management console.
           </p>
-          <div className="flex flex-col gap-2.5 pt-3 border-t border-slate-800">
+          <div className="pt-2">
             <Link href="/dashboard" className="w-full">
               <Button variant="secondary" className="w-full text-xs">
-                Return to Customer Workspace
-              </Button>
-            </Link>
-            <Link href="/login" className="w-full">
-              <Button variant="outline" className="w-full text-xs border-slate-700 text-slate-300 hover:bg-slate-800">
-                Sign In to Customer Account
+                Back to Workspace
               </Button>
             </Link>
           </div>
@@ -44,12 +66,12 @@ export default async function AdminLayout({
     );
   }
 
-  // Authenticated Super Admin: Render full administrative dashboard immediately
+  // Authenticated & Authorized Super Admin -> Render Super Admin Dashboard
   return (
     <div className="flex min-h-screen bg-[#070E18] text-slate-100">
       <AdminSidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader adminEmail={ctx.user.email} />
+        <AdminHeader adminEmail={authRes.user?.email || 'admin@benzwell.in'} />
         <main className="flex-1 p-6 md:p-8 overflow-y-auto">{children}</main>
       </div>
     </div>

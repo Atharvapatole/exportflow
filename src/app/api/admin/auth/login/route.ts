@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { userRepo, adminRepo } from '@/lib/db';
+import { userRepo, adminRepo, platformAdminRepo } from '@/lib/db';
 import { verifyPassword, hashPassword, setSessionCookie, ensureSuperAdminInitialized } from '@/lib/auth';
 import { infraConfig } from '@/config/infrastructure';
 import { createClient as createSupabaseServerClient } from '@/lib/supabase/server';
@@ -47,28 +47,40 @@ export async function POST(req: NextRequest) {
       if (!supaErr && supaAuth?.user) {
         // Authenticated in Supabase! Now verify Super Admin role server-side
         const supaUser = supaAuth.user;
-        let isSuperAdmin = supaUser.user_metadata?.role === 'super_admin';
 
-        // Also check profiles table
-        if (!isSuperAdmin) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', supaUser.id)
-            .maybeSingle();
+        // Check platform_admins repository
+        let adminRecord = await platformAdminRepo.findByAuthUserId(supaUser.id);
+        if (!adminRecord) {
+          adminRecord = await platformAdminRepo.findByEmail(cleanEmail);
+        }
 
-          if (profile?.role === 'super_admin') {
-            isSuperAdmin = true;
+        // Check if user is known bootstrap admin or has super_admin metadata
+        if (!adminRecord) {
+          const isMetadataAdmin = supaUser.user_metadata?.role === 'super_admin';
+          const isKnownAdmin = cleanEmail === bootstrapConfig.email.toLowerCase() ||
+            cleanEmail === 'admin.benzwell@gmail.com' ||
+            cleanEmail.endsWith('@benzwell.in');
+
+          if (isMetadataAdmin || isKnownAdmin) {
+            adminRecord = await platformAdminRepo.upsertAdmin({
+              authUserId: supaUser.id,
+              email: cleanEmail,
+              role: 'SUPER_ADMIN',
+              isActive: true,
+              createdBy: 'login_verification_provision',
+            });
           }
         }
 
-        // Also check local DB user role
-        const localUser = await userRepo.findByEmail(cleanEmail);
-        if (localUser?.role === 'super_admin') {
-          isSuperAdmin = true;
+        if (adminRecord && !adminRecord.isActive) {
+          await supabase.auth.signOut();
+          return NextResponse.json(
+            { error: 'Access Denied: This administrator account has been deactivated. Please contact root support.' },
+            { status: 403 }
+          );
         }
 
-        if (!isSuperAdmin) {
+        if (!adminRecord || adminRecord.role !== 'SUPER_ADMIN') {
           // User is authenticated in Supabase, but is a normal customer, NOT a Super Admin!
           await supabase.auth.signOut();
           await adminRepo.logActivity({
@@ -86,16 +98,26 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        authenticatedAdminId = localUser?.id || supaUser.id;
-        authenticatedAdminName = localUser?.name || supaUser.user_metadata?.name || 'Super Admin';
+        authenticatedAdminId = supaUser.id;
+        authenticatedAdminName = supaUser.user_metadata?.name || 'Super Admin (BENZWELL)';
         authMethod = 'supabase_auth';
 
-        // Keep local DB password hash synchronized so offline fallback remains in sync
-        if (localUser) {
+        // Keep local DB user synchronized
+        let localUser = await userRepo.findByEmail(cleanEmail);
+        if (!localUser) {
+          localUser = await userRepo.create({
+            name: authenticatedAdminName,
+            email: cleanEmail,
+            role: 'super_admin',
+            status: 'active',
+            passwordHash: hashPassword(password),
+          });
+        } else {
           await userRepo.update(localUser.id, {
             passwordHash: hashPassword(password),
             lastActiveAt: new Date().toISOString(),
             status: 'active',
+            role: 'super_admin',
           });
         }
       }
@@ -112,16 +134,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (user.role !== 'super_admin') {
+      // Check platformAdminRepo for status and role
+      const adminRecord = await platformAdminRepo.findByEmail(cleanEmail);
+      if (adminRecord && !adminRecord.isActive) {
         return NextResponse.json(
-          { error: 'Access Denied: This console is strictly restricted to Super Administrators.' },
+          { error: 'Access Denied: This administrator account has been deactivated.' },
           { status: 403 }
         );
       }
 
-      if (user.status === 'suspended' || user.status === 'disabled') {
+      if (user.role !== 'super_admin' && adminRecord?.role !== 'SUPER_ADMIN') {
         return NextResponse.json(
-          { error: 'Administrator account has been disabled or suspended.' },
+          { error: 'Access Denied: This console is strictly restricted to Super Administrators.' },
           { status: 403 }
         );
       }

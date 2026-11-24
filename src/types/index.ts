@@ -1,5 +1,18 @@
 export type UserRole = 'super_admin' | 'owner' | 'admin' | 'manager' | 'employee' | 'viewer';
 
+export type PlatformAdminRole = 'SUPER_ADMIN' | 'PLATFORM_ADMIN';
+
+export interface PlatformAdmin {
+  id: string;
+  authUserId: string;
+  email: string;
+  role: PlatformAdminRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
 export interface User {
   id: string;
   name: string;

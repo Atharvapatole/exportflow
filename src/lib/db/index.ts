@@ -26,8 +26,10 @@ import {
   OrganizationSubscription,
   ContactInquiry,
   DocumentAllowance,
+  PlatformAdmin,
 } from '@/types';
 import { roundToTwo, safeAdd } from '@/lib/utils';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // ================= USER REPOSITORY =================
 export const userRepo = {
@@ -1236,6 +1238,261 @@ export const contactRepo = {
     db.contactInquiries[index].updatedAt = new Date().toISOString();
     writeDb(db);
     return db.contactInquiries[index];
+  },
+};
+
+// ================= PLATFORM ADMIN REPOSITORY =================
+export const platformAdminRepo = {
+  async findByAuthUserId(authUserId: string): Promise<PlatformAdmin | null> {
+    if (!authUserId) return null;
+
+    // 1. Check Supabase platform_admins table if available
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('platform_admins')
+          .select('*')
+          .eq('auth_user_id', authUserId)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            authUserId: data.auth_user_id,
+            email: data.email,
+            role: data.role as 'SUPER_ADMIN' | 'PLATFORM_ADMIN',
+            isActive: data.is_active,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+            createdBy: data.created_by,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[PLATFORM_ADMIN_REPO] Supabase table lookup notice:', e);
+    }
+
+    // 2. Check local store fallback
+    const db = readDb();
+    if (!db.platformAdmins) return null;
+    const admin = db.platformAdmins.find((a: any) => a.authUserId === authUserId);
+    return admin || null;
+  },
+
+  async findByEmail(email: string): Promise<PlatformAdmin | null> {
+    if (!email) return null;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Check Supabase
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('platform_admins')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            authUserId: data.auth_user_id,
+            email: data.email,
+            role: data.role as 'SUPER_ADMIN' | 'PLATFORM_ADMIN',
+            isActive: data.is_active,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+            createdBy: data.created_by,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[PLATFORM_ADMIN_REPO] Supabase email lookup notice:', e);
+    }
+
+    // 2. Check local store fallback
+    const db = readDb();
+    if (!db.platformAdmins) return null;
+    return db.platformAdmins.find((a: any) => a.email.toLowerCase() === cleanEmail) || null;
+  },
+
+  async listAll(): Promise<PlatformAdmin[]> {
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('platform_admins')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          return data.map((d: any) => ({
+            id: d.id,
+            authUserId: d.auth_user_id,
+            email: d.email,
+            role: d.role as 'SUPER_ADMIN' | 'PLATFORM_ADMIN',
+            isActive: d.is_active,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+            createdBy: d.created_by,
+          }));
+        }
+      }
+    } catch {}
+
+    const db = readDb();
+    return db.platformAdmins || [];
+  },
+
+  async upsertAdmin(admin: {
+    authUserId: string;
+    email: string;
+    role?: 'SUPER_ADMIN' | 'PLATFORM_ADMIN';
+    isActive?: boolean;
+    createdBy?: string;
+  }): Promise<PlatformAdmin> {
+    const cleanEmail = admin.email.trim().toLowerCase();
+    const role = admin.role || 'SUPER_ADMIN';
+    const isActive = admin.isActive !== false;
+    const createdBy = admin.createdBy || 'system_bootstrap';
+    const now = new Date().toISOString();
+
+    let createdId = `pa_${Date.now()}`;
+
+    // 1. Try Upsert in Supabase
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('platform_admins')
+          .upsert(
+            {
+              auth_user_id: admin.authUserId,
+              email: cleanEmail,
+              role,
+              is_active: isActive,
+              created_by: createdBy,
+              updated_at: now,
+            },
+            { onConflict: 'auth_user_id' }
+          )
+          .select()
+          .maybeSingle();
+
+        if (!error && data) {
+          createdId = data.id;
+        }
+
+        // Also synchronize Supabase profiles table
+        await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: admin.authUserId,
+              email: cleanEmail,
+              name: 'Super Admin (BENZWELL)',
+              role: 'super_admin',
+              status: isActive ? 'active' : 'suspended',
+              updated_at: now,
+            },
+            { onConflict: 'id' }
+          );
+
+        // Also synchronize Supabase auth metadata
+        await supabase.auth.admin.updateUserById(admin.authUserId, {
+          user_metadata: {
+            role: 'super_admin',
+            name: 'Super Admin (BENZWELL)',
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[PLATFORM_ADMIN_REPO] Supabase upsert notice:', e);
+    }
+
+    // 2. Always persist in local store cache
+    const db = readDb();
+    if (!db.platformAdmins) db.platformAdmins = [];
+    const existingIndex = db.platformAdmins.findIndex(
+      (a: any) => a.authUserId === admin.authUserId || a.email.toLowerCase() === cleanEmail
+    );
+
+    const record: PlatformAdmin = {
+      id: existingIndex !== -1 ? db.platformAdmins[existingIndex].id : createdId,
+      authUserId: admin.authUserId,
+      email: cleanEmail,
+      role,
+      isActive,
+      createdAt: existingIndex !== -1 ? db.platformAdmins[existingIndex].createdAt : now,
+      updatedAt: now,
+      createdBy,
+    };
+
+    if (existingIndex !== -1) {
+      db.platformAdmins[existingIndex] = record;
+    } else {
+      db.platformAdmins.push(record);
+    }
+    writeDb(db);
+
+    return record;
+  },
+
+  async deactivate(authUserId: string): Promise<boolean> {
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase
+          .from('platform_admins')
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq('auth_user_id', authUserId);
+
+        await supabase
+          .from('profiles')
+          .update({ status: 'suspended', updated_at: new Date().toISOString() })
+          .eq('id', authUserId);
+      }
+    } catch {}
+
+    const db = readDb();
+    if (!db.platformAdmins) return false;
+    const index = db.platformAdmins.findIndex((a: any) => a.authUserId === authUserId);
+    if (index !== -1) {
+      db.platformAdmins[index].isActive = false;
+      db.platformAdmins[index].updatedAt = new Date().toISOString();
+      writeDb(db);
+      return true;
+    }
+    return false;
+  },
+
+  async activate(authUserId: string): Promise<boolean> {
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase
+          .from('platform_admins')
+          .update({ is_active: true, updated_at: new Date().toISOString() })
+          .eq('auth_user_id', authUserId);
+
+        await supabase
+          .from('profiles')
+          .update({ status: 'active', updated_at: new Date().toISOString() })
+          .eq('id', authUserId);
+      }
+    } catch {}
+
+    const db = readDb();
+    if (!db.platformAdmins) return false;
+    const index = db.platformAdmins.findIndex((a: any) => a.authUserId === authUserId);
+    if (index !== -1) {
+      db.platformAdmins[index].isActive = true;
+      db.platformAdmins[index].updatedAt = new Date().toISOString();
+      writeDb(db);
+      return true;
+    }
+    return false;
   },
 };
 

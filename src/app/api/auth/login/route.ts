@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { userRepo, orgRepo, adminRepo } from '@/lib/db';
+import { userRepo, orgRepo, adminRepo, platformAdminRepo } from '@/lib/db';
 import { verifyPassword, setSessionCookie, ensureSuperAdminInitialized } from '@/lib/auth';
 import { infraConfig } from '@/config/infrastructure';
+import { createClient as createSupabaseServerClient } from '@/lib/supabase/server';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -77,12 +78,27 @@ export async function POST(req: NextRequest) {
     // Update lastActiveAt
     await userRepo.update(user.id, { lastActiveAt: new Date().toISOString() });
 
+    // Also sign in to Supabase SSR client to establish Supabase session cookies
+    try {
+      const supabase = await createSupabaseServerClient();
+      if (supabase) {
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+      }
+    } catch {}
+
+    // Check if user is Super Admin via user record or platformAdminRepo
+    const platformAdmin = await platformAdminRepo.findByEmail(cleanEmail);
+    const isSuperAdmin = (user.role === 'super_admin' || platformAdmin?.role === 'SUPER_ADMIN') && platformAdmin?.isActive !== false;
+
     // Establish session cookie
     await setSessionCookie({
       userId: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: isSuperAdmin ? 'super_admin' : user.role,
       orgId,
     });
 
@@ -97,7 +113,6 @@ export async function POST(req: NextRequest) {
       details: `User logged in from web client`,
     });
 
-    const isSuperAdmin = user.role === 'super_admin';
     const redirectUrl = isSuperAdmin ? '/admin' : '/dashboard';
 
     return NextResponse.json({

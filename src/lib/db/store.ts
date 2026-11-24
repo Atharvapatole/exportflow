@@ -44,6 +44,7 @@ export interface DatabaseState {
   organizationSubscriptions: OrganizationSubscription[];
   contactInquiries: ContactInquiry[];
   userThemePreferences: Record<string, ThemeMode>;
+  platformAdmins: any[];
 }
 
 const defaultState: DatabaseState = {
@@ -62,6 +63,7 @@ const defaultState: DatabaseState = {
   platformRevenue: [],
   auditLogs: [],
   platformActivity: [],
+  platformAdmins: [],
   aiProviderConfig: {
     id: '00000000-0000-0000-0000-000000000001',
     isEnabled: true,
@@ -139,6 +141,7 @@ export function readDb(): DatabaseState {
     if (!parsed.organizationSubscriptions) parsed.organizationSubscriptions = [];
     if (!parsed.contactInquiries) parsed.contactInquiries = [];
     if (!parsed.userThemePreferences) parsed.userThemePreferences = {};
+    if (!parsed.platformAdmins) parsed.platformAdmins = [];
     return parsed;
   } catch (err) {
     console.error('Error reading db file, falling back to default:', err);

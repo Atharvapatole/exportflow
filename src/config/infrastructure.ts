@@ -151,6 +151,31 @@ class InfrastructureConfigService {
     };
   }
 
+  /**
+   * Evaluates development-only direct admin entry bypass.
+   *
+   * STRICT SECURITY BOUNDARY:
+   * 1. If NODE_ENV === 'production', this function unconditionally returns false.
+   * 2. Any attempt to set ADMIN_DEV_BYPASS=true in production logs a critical security alert
+   *    and is strictly rejected.
+   * 3. Operates entirely on the server side (never exposed via getPublicConfig()).
+   */
+  public isDevAdminBypassEnabled(): boolean {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const bypassFlag = process.env.ADMIN_DEV_BYPASS === 'true';
+
+    if (isProduction) {
+      if (bypassFlag) {
+        console.error(
+          '[SECURITY CRITICAL] ADMIN_DEV_BYPASS is set in production environment! Bypassing is strictly blocked.'
+        );
+      }
+      return false;
+    }
+
+    return bypassFlag;
+  }
+
   public getPublicConfig() {
     const supabase = this.getSupabaseConfig();
     return {
