@@ -1,11 +1,11 @@
 import React from 'react';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { readDb } from '@/lib/db/store';
 import { FileText, TrendingUp, Ship, Package } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 export default async function AdminDocumentsPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
   const db = readDb();

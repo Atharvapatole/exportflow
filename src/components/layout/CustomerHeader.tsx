@@ -16,6 +16,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 interface CustomerHeaderProps {
   userName?: string;
@@ -45,12 +46,12 @@ export function CustomerHeader({
   };
 
   return (
-    <header className="h-16 bg-white border-b border-[#E5EAF1] px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs">
+    <header className="h-16 bg-white dark:bg-[#131B2A] border-b border-[#E5EAF1] dark:border-[#243047] px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs no-print transition-colors">
       {/* Left: Organization Title & Date */}
       <div className="flex items-center gap-3">
         <div>
-          <h2 className="text-sm font-bold text-[#172033] tracking-tight">{companyName}</h2>
-          <p className="text-[11px] text-[#64748B]">
+          <h2 className="text-sm font-bold text-[#172033] dark:text-white tracking-tight">{companyName}</h2>
+          <p className="text-[11px] text-[#64748B] dark:text-slate-400">
             {new Date().toLocaleDateString('en-US', {
               weekday: 'short',
               month: 'short',
@@ -63,6 +64,8 @@ export function CustomerHeader({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3">
+        <ThemeToggle />
+
         {/* Quick Actions Dropdown */}
         <div className="relative">
           <Button

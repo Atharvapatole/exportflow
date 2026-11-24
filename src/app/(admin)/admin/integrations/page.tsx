@@ -1,24 +1,24 @@
 import React from 'react';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { infraConfig } from '@/config/infrastructure';
 import { Cpu, CheckCircle2, AlertTriangle, Key, ExternalLink } from 'lucide-react';
 
 export default async function AdminIntegrationsPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
-  const appwrite = infraConfig.getAppwriteConfig();
+  const supabase = infraConfig.getSupabaseConfig();
   const imagekit = infraConfig.getImageKitConfig();
   const email = infraConfig.getEmailConfig();
   const ai = infraConfig.getAiConfig();
 
   const integrations = [
     {
-      name: 'Appwrite Backend & Storage',
-      category: 'Database & Private File Storage',
-      isConfigured: appwrite.isConfigured,
-      endpoint: appwrite.endpoint,
-      details: appwrite.isConfigured ? `Project: ${appwrite.projectId}` : 'Awaiting APPWRITE_PROJECT_ID & API Key',
+      name: 'Supabase PostgreSQL & Storage',
+      category: 'PostgreSQL Database, Auth & Private Document Storage',
+      isConfigured: supabase.isConfigured,
+      endpoint: supabase.url || 'Not configured',
+      details: supabase.isConfigured ? 'Connected to Supabase Project' : 'Awaiting NEXT_PUBLIC_SUPABASE_URL & ANON_KEY in .env.local',
     },
     {
       name: 'ImageKit Media CDN',

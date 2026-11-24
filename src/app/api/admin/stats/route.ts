@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { adminRepo, userRepo, orgRepo, documentRepo } from '@/lib/db';
 
 export async function GET() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) {
     return NextResponse.json({ error: 'Forbidden: Super Admin only' }, { status: 403 });
   }

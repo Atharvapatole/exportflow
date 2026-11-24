@@ -9,6 +9,7 @@ import {
   TrendingUp,
   FileCheck,
   Package,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -150,11 +151,22 @@ export default async function AllDocumentsPage({
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <Link href={viewUrl}>
-                            <Button size="sm" variant="ghost" className="h-7 text-xs">
-                              Open <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                            </Button>
-                          </Link>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <a
+                              href={`/api/documents/${doc.id}/pdf`}
+                              download
+                              title="Download isolated PDF document"
+                              className="inline-flex items-center justify-center h-7 px-2 text-xs font-semibold rounded-md border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-blue-600 transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                              PDF
+                            </a>
+                            <Link href={viewUrl}>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs">
+                                Open <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                              </Button>
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );

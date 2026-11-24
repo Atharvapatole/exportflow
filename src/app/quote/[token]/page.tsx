@@ -144,10 +144,14 @@ export default function PublicQuotationAcceptancePage() {
           </div>
 
           <div className="flex items-center gap-2.5">
-            <Button size="sm" variant="outline" onClick={() => window.print()} className="bg-slate-800 text-white border-slate-600 hover:bg-slate-700">
+            <a
+              href={`/api/documents/${doc.id}/pdf`}
+              download={`ExportFlow_Quotation_${doc.documentNumber}.pdf`}
+              className="inline-flex items-center justify-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 text-white border border-slate-600 hover:bg-slate-700 transition-colors shadow-2xs"
+            >
               <Download className="w-4 h-4 mr-1.5" />
               Download PDF
-            </Button>
+            </a>
 
             {actionDone === 'accepted' ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">

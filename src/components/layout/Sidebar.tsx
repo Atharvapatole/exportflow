@@ -56,7 +56,7 @@ export function Sidebar({ companyName = 'Your Company', isSuperAdmin = false }: 
   };
 
   return (
-    <aside className="w-64 bg-[#10243A] text-slate-300 flex flex-col shrink-0 h-screen sticky top-0 border-r border-[#1E3A8A]/30 z-30 select-none">
+    <aside className="w-64 bg-[#10243A] text-slate-300 flex flex-col shrink-0 h-screen sticky top-0 border-r border-[#1E3A8A]/30 z-30 select-none no-print">
       {/* Top Brand Header */}
       <div className="p-4 border-b border-slate-700/60 bg-[#0A1726]/80 flex flex-col gap-2">
         <BrandLogo theme="dark" showTagline={false} size="sm" />
@@ -157,7 +157,7 @@ export function Sidebar({ companyName = 'Your Company', isSuperAdmin = false }: 
         )}
         <div className="flex items-center justify-between text-[11px] text-slate-400 px-2">
           <span>BENZWELL ExportFlow</span>
-          <span className="text-emerald-400 font-bold">Free Launch</span>
+          <span className="text-blue-400 font-semibold">v2.4 Pro</span>
         </div>
       </div>
     </aside>

@@ -16,6 +16,16 @@ import {
   AdminAuditLog,
   PlatformActivity,
   UserRole,
+  AiProviderConfig,
+  AiUsageLog,
+  QuotationRevision,
+  RazorpayConfig,
+  RazorpayWebhookEvent,
+  RazorpayPaymentLog,
+  OrganizationWallet,
+  OrganizationSubscription,
+  ContactInquiry,
+  DocumentAllowance,
 } from '@/types';
 import { roundToTwo, safeAdd } from '@/lib/utils';
 
@@ -355,6 +365,11 @@ export const documentRepo = {
   async findById(organizationId: string, id: string): Promise<BaseDocument | null> {
     const db = readDb();
     return db.documents.find((d) => d.organizationId === organizationId && d.id === id) || null;
+  },
+
+  async findByIdGlobal(id: string): Promise<BaseDocument | null> {
+    const db = readDb();
+    return db.documents.find((d) => d.id === id) || null;
   },
 
   async findByShareToken(token: string): Promise<BaseDocument | null> {
@@ -730,3 +745,497 @@ export const adminRepo = {
     return db.platformActivity.slice(-limit).reverse();
   },
 };
+
+// ================= AI CONFIGURATION & USAGE REPOSITORY =================
+export const aiRepo = {
+  async getConfig(): Promise<AiProviderConfig> {
+    const db = readDb();
+    if (!db.aiProviderConfig) {
+      db.aiProviderConfig = {
+        id: '00000000-0000-0000-0000-000000000001',
+        isEnabled: true,
+        primaryProvider: 'groq',
+        groqApiKey: process.env.GROQ_API_KEY || '',
+        groqModel: 'llama-3.3-70b-versatile',
+        backupProvider: 'gemini',
+        geminiApiKey: process.env.GEMINI_API_KEY || '',
+        geminiModel: 'gemini-2.0-flash',
+        requestTimeout: 30000,
+        maxRetries: 2,
+        maxInputLength: 6000,
+        dailyLimit: 1000,
+        status: 'healthy',
+        updatedAt: new Date().toISOString(),
+      };
+      writeDb(db);
+    }
+    return db.aiProviderConfig;
+  },
+
+  async updateConfig(updates: Partial<AiProviderConfig>): Promise<AiProviderConfig> {
+    const db = readDb();
+    const current = await this.getConfig();
+    db.aiProviderConfig = {
+      ...current,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    writeDb(db);
+    return db.aiProviderConfig;
+  },
+
+  async logUsage(log: Omit<AiUsageLog, 'id' | 'createdAt'>): Promise<AiUsageLog> {
+    const db = readDb();
+    if (!db.aiUsageLogs) db.aiUsageLogs = [];
+    const newLog: AiUsageLog = {
+      ...log,
+      id: `ai_log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+    db.aiUsageLogs.push(newLog);
+    writeDb(db);
+    return newLog;
+  },
+
+  async listUsageLogs(organizationId?: string, limit: number = 50): Promise<AiUsageLog[]> {
+    const db = readDb();
+    if (!db.aiUsageLogs) return [];
+    let list = db.aiUsageLogs;
+    if (organizationId) {
+      list = list.filter((l) => l.organizationId === organizationId);
+    }
+    return list.slice(-limit).reverse();
+  },
+};
+
+// ================= QUOTATION REVISION REPOSITORY =================
+export const revisionRepo = {
+  async createRevision(
+    quotationId: string,
+    organizationId: string,
+    docSnapshot: BaseDocument,
+    changeSummary: string = 'Updated quotation revision',
+    createdBy?: string
+  ): Promise<QuotationRevision> {
+    const db = readDb();
+    if (!db.quotationRevisions) db.quotationRevisions = [];
+
+    const existing = db.quotationRevisions.filter((r) => r.quotationId === quotationId);
+    const nextRevNum = existing.length + 1;
+
+    const revision: QuotationRevision = {
+      id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      quotationId,
+      organizationId,
+      revisionNumber: nextRevNum,
+      documentSnapshot: JSON.parse(JSON.stringify(docSnapshot)),
+      changeSummary,
+      createdBy,
+      createdAt: new Date().toISOString(),
+    };
+
+    db.quotationRevisions.push(revision);
+    writeDb(db);
+    return revision;
+  },
+
+  async listByQuotation(quotationId: string): Promise<QuotationRevision[]> {
+    const db = readDb();
+    if (!db.quotationRevisions) return [];
+    return db.quotationRevisions
+      .filter((r) => r.quotationId === quotationId)
+      .sort((a, b) => b.revisionNumber - a.revisionNumber);
+  },
+
+  async getLatestRevision(quotationId: string): Promise<QuotationRevision | null> {
+    const list = await this.listByQuotation(quotationId);
+    return list[0] || null;
+  },
+};
+
+// ================= RAZORPAY CONFIG & PAYMENT REPOSITORY =================
+export const razorpayRepo = {
+  async getConfig(): Promise<RazorpayConfig> {
+    const db = readDb();
+    if (!db.razorpayConfig) {
+      db.razorpayConfig = {
+        id: '00000000-0000-0000-0000-000000000002',
+        isEnabled: false,
+        mode: 'test',
+        testKeyId: '',
+        testKeySecret: '',
+        testWebhookSecret: '',
+        liveKeyId: '',
+        liveKeySecret: '',
+        liveWebhookSecret: '',
+        merchantDisplayName: 'ExportFlow by BENZWELL',
+        merchantSupportEmail: 'info@benzwell.in',
+        status: 'unconfigured',
+        lastConfigUpdate: new Date().toISOString(),
+        webhookStatus: 'unverified',
+        failedWebhookCount: 0,
+      };
+      writeDb(db);
+    }
+    return db.razorpayConfig;
+  },
+
+  async updateConfig(updates: Partial<RazorpayConfig>): Promise<RazorpayConfig> {
+    const db = readDb();
+    const current = await this.getConfig();
+    db.razorpayConfig = {
+      ...current,
+      ...updates,
+      lastConfigUpdate: new Date().toISOString(),
+    };
+    writeDb(db);
+    return db.razorpayConfig;
+  },
+
+  async logWebhookEvent(event: Omit<RazorpayWebhookEvent, 'receivedAt'>): Promise<RazorpayWebhookEvent> {
+    const db = readDb();
+    if (!db.razorpayWebhookEvents) db.razorpayWebhookEvents = [];
+    const entry: RazorpayWebhookEvent = {
+      ...event,
+      receivedAt: new Date().toISOString(),
+    };
+    // Keep max 200 events
+    db.razorpayWebhookEvents.push(entry);
+    if (db.razorpayWebhookEvents.length > 200) {
+      db.razorpayWebhookEvents = db.razorpayWebhookEvents.slice(-200);
+    }
+    writeDb(db);
+    return entry;
+  },
+
+  isWebhookEventProcessed(eventId: string): boolean {
+    const db = readDb();
+    if (!db.razorpayWebhookEvents) return false;
+    return db.razorpayWebhookEvents.some((e) => e.id === eventId && e.status === 'processed');
+  },
+
+  listWebhookEvents(limit: number = 30): RazorpayWebhookEvent[] {
+    const db = readDb();
+    if (!db.razorpayWebhookEvents) return [];
+    return [...db.razorpayWebhookEvents].reverse().slice(0, limit);
+  },
+
+  async createPaymentLog(log: Omit<RazorpayPaymentLog, 'id' | 'createdAt' | 'updatedAt'>): Promise<RazorpayPaymentLog> {
+    const db = readDb();
+    if (!db.razorpayPaymentLogs) db.razorpayPaymentLogs = [];
+    const newLog: RazorpayPaymentLog = {
+      ...log,
+      id: `rzp_log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.razorpayPaymentLogs.push(newLog);
+    writeDb(db);
+    return newLog;
+  },
+
+  async updatePaymentLog(orderId: string, updates: Partial<RazorpayPaymentLog>): Promise<RazorpayPaymentLog | null> {
+    const db = readDb();
+    if (!db.razorpayPaymentLogs) return null;
+    const index = db.razorpayPaymentLogs.findIndex((p) => p.orderId === orderId);
+    if (index === -1) return null;
+    db.razorpayPaymentLogs[index] = {
+      ...db.razorpayPaymentLogs[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    writeDb(db);
+    return db.razorpayPaymentLogs[index];
+  },
+
+  getPaymentLogByOrderId(orderId: string): RazorpayPaymentLog | null {
+    const db = readDb();
+    if (!db.razorpayPaymentLogs) return null;
+    return db.razorpayPaymentLogs.find((p) => p.orderId === orderId) || null;
+  },
+
+  listPaymentLogs(organizationId?: string, limit: number = 50): RazorpayPaymentLog[] {
+    const db = readDb();
+    if (!db.razorpayPaymentLogs) return [];
+    let list = db.razorpayPaymentLogs;
+    if (organizationId) {
+      list = list.filter((p) => p.organizationId === organizationId);
+    }
+    return [...list].reverse().slice(0, limit);
+  },
+};
+
+// ================= DOCUMENT CREDIT WALLET REPOSITORY =================
+export const walletRepo = {
+  async getOrCreateWallet(organizationId: string): Promise<OrganizationWallet> {
+    const db = readDb();
+    if (!db.organizationWallets) db.organizationWallets = [];
+    let wallet = db.organizationWallets.find((w) => w.organizationId === organizationId);
+    if (!wallet) {
+      wallet = {
+        id: `wlt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId,
+        // Free initial allowance: 1 quotation
+        lifetimeCredits: {
+          quotations: 1,
+          proformaInvoices: 0,
+          commercialInvoices: 0,
+          packingLists: 0,
+        },
+        subscriptionCredits: {
+          quotations: 0,
+          proformaInvoices: 0,
+          commercialInvoices: 0,
+          packingLists: 0,
+        },
+        usedCounts: {
+          quotations: 0,
+          proformaInvoices: 0,
+          commercialInvoices: 0,
+          packingLists: 0,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      db.organizationWallets.push(wallet);
+      writeDb(db);
+    }
+    return wallet;
+  },
+
+  async addCredits(
+    organizationId: string,
+    credits: Partial<DocumentAllowance>,
+    source: 'lifetime' | 'subscription'
+  ): Promise<OrganizationWallet> {
+    const db = readDb();
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const index = db.organizationWallets.findIndex((w) => w.organizationId === organizationId);
+
+    const targetCredits = source === 'lifetime' ? wallet.lifetimeCredits : wallet.subscriptionCredits;
+
+    if (credits.quotations) targetCredits.quotations += credits.quotations;
+    if (credits.proformaInvoices) targetCredits.proformaInvoices += credits.proformaInvoices;
+    if (credits.commercialInvoices) targetCredits.commercialInvoices += credits.commercialInvoices;
+    if (credits.packingLists) targetCredits.packingLists += credits.packingLists;
+
+    wallet.updatedAt = new Date().toISOString();
+    db.organizationWallets[index] = wallet;
+    writeDb(db);
+    return wallet;
+  },
+
+  async hasAvailableCredit(
+    organizationId: string,
+    docType: 'quotations' | 'proformaInvoices' | 'commercialInvoices' | 'packingLists'
+  ): Promise<boolean> {
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const available = wallet.lifetimeCredits[docType] + wallet.subscriptionCredits[docType];
+    return available > 0;
+  },
+
+  async useCredit(
+    organizationId: string,
+    docType: 'quotations' | 'proformaInvoices' | 'commercialInvoices' | 'packingLists'
+  ): Promise<boolean> {
+    const db = readDb();
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const index = db.organizationWallets.findIndex((w) => w.organizationId === organizationId);
+
+    // Consume subscription credits first (per cycle), then lifetime credits
+    if (wallet.subscriptionCredits[docType] > 0) {
+      wallet.subscriptionCredits[docType] -= 1;
+      wallet.usedCounts[docType] += 1;
+    } else if (wallet.lifetimeCredits[docType] > 0) {
+      wallet.lifetimeCredits[docType] -= 1;
+      wallet.usedCounts[docType] += 1;
+    } else {
+      return false; // No credit available
+    }
+
+    wallet.updatedAt = new Date().toISOString();
+    db.organizationWallets[index] = wallet;
+    writeDb(db);
+    return true;
+  },
+};
+
+// ================= SUBSCRIPTION & TRIAL REPOSITORY =================
+export const subscriptionRepo = {
+  async getOrCreateSubscription(organizationId: string): Promise<OrganizationSubscription> {
+    const db = readDb();
+    if (!db.organizationSubscriptions) db.organizationSubscriptions = [];
+    let sub = db.organizationSubscriptions.find((s) => s.organizationId === organizationId);
+    if (!sub) {
+      sub = {
+        id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId,
+        planId: 'free',
+        status: 'active',
+        hasUsedTrial: false,
+        updatedAt: new Date().toISOString(),
+      };
+      db.organizationSubscriptions.push(sub);
+      writeDb(db);
+    }
+
+    // Check if trial has expired and auto-revert to free
+    if (sub.status === 'trial' && sub.trialEndDate) {
+      if (new Date() > new Date(sub.trialEndDate)) {
+        sub.status = 'expired';
+        sub.planId = 'free';
+        sub.updatedAt = new Date().toISOString();
+        const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
+        db.organizationSubscriptions[index] = sub;
+        writeDb(db);
+      }
+    }
+
+    return sub;
+  },
+
+  async activateTrial(organizationId: string): Promise<{ success: boolean; subscription?: OrganizationSubscription; message?: string }> {
+    const db = readDb();
+    const sub = await this.getOrCreateSubscription(organizationId);
+
+    if (sub.hasUsedTrial) {
+      return { success: false, message: 'Your organization has already redeemed the 3-day Growth trial.' };
+    }
+
+    const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
+    const now = new Date();
+    const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Exactly 3 days
+
+    sub.planId = 'growth';
+    sub.status = 'trial';
+    sub.trialStartDate = now.toISOString();
+    sub.trialEndDate = trialEnd.toISOString();
+    sub.hasUsedTrial = true;
+    sub.updatedAt = now.toISOString();
+
+    db.organizationSubscriptions[index] = sub;
+    writeDb(db);
+
+    // Also grant Growth plan subscription credits for the trial period
+    await walletRepo.addCredits(
+      organizationId,
+      {
+        quotations: 30,
+        proformaInvoices: 20,
+        commercialInvoices: 20,
+        packingLists: 20,
+      },
+      'subscription'
+    );
+
+    return { success: true, subscription: sub, message: '3-Day Growth Trial activated successfully.' };
+  },
+
+  async getTrialStatus(organizationId: string): Promise<{
+    isTrialActive: boolean;
+    remainingMs: number;
+    remainingHours: number;
+    trialEndDate?: string;
+    hasUsedTrial: boolean;
+  }> {
+    const sub = await this.getOrCreateSubscription(organizationId);
+    if (sub.status !== 'trial' || !sub.trialEndDate) {
+      return { isTrialActive: false, remainingMs: 0, remainingHours: 0, hasUsedTrial: sub.hasUsedTrial };
+    }
+
+    const remainingMs = Math.max(0, new Date(sub.trialEndDate).getTime() - Date.now());
+    const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+    return {
+      isTrialActive: remainingMs > 0,
+      remainingMs,
+      remainingHours,
+      trialEndDate: sub.trialEndDate,
+      hasUsedTrial: sub.hasUsedTrial,
+    };
+  },
+
+  async activatePlan(
+    organizationId: string,
+    planId: 'starter' | 'growth' | 'business',
+    billingCycle: 'monthly' | 'annual',
+    razorpaySubscriptionId?: string
+  ): Promise<OrganizationSubscription> {
+    const db = readDb();
+    const sub = await this.getOrCreateSubscription(organizationId);
+    const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
+
+    const now = new Date();
+    const periodDays = billingCycle === 'annual' ? 365 : 30;
+    const periodEnd = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
+
+    sub.planId = planId;
+    sub.status = 'active';
+    sub.billingCycle = billingCycle;
+    sub.currentPeriodStart = now.toISOString();
+    sub.currentPeriodEnd = periodEnd.toISOString();
+    if (razorpaySubscriptionId) sub.razorpaySubscriptionId = razorpaySubscriptionId;
+    sub.updatedAt = now.toISOString();
+
+    db.organizationSubscriptions[index] = sub;
+    writeDb(db);
+    return sub;
+  },
+};
+
+// ================= CONTACT INQUIRY REPOSITORY =================
+export const contactRepo = {
+  async createInquiry(
+    inquiry: Omit<ContactInquiry, 'id' | 'inquiryNumber' | 'createdAt' | 'updatedAt'>
+  ): Promise<ContactInquiry> {
+    const db = readDb();
+    if (!db.contactInquiries) db.contactInquiries = [];
+    const count = db.contactInquiries.length + 1;
+    const inquiryNumber = `INQ-${new Date().getFullYear()}-${String(count).padStart(4, '0')}`;
+    const newInquiry: ContactInquiry = {
+      ...inquiry,
+      id: `inq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      inquiryNumber,
+      status: 'new',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.contactInquiries.push(newInquiry);
+    writeDb(db);
+    return newInquiry;
+  },
+
+  async listInquiries(status?: string, category?: string, limit: number = 50): Promise<ContactInquiry[]> {
+    const db = readDb();
+    if (!db.contactInquiries) return [];
+    let list = db.contactInquiries;
+    if (status && status !== 'all') {
+      list = list.filter((i) => i.status === status);
+    }
+    if (category && category !== 'all') {
+      list = list.filter((i) => i.category === category);
+    }
+    return [...list].reverse().slice(0, limit);
+  },
+
+  async getInquiryById(id: string): Promise<ContactInquiry | null> {
+    const db = readDb();
+    if (!db.contactInquiries) return null;
+    return db.contactInquiries.find((i) => i.id === id) || null;
+  },
+
+  async updateInquiryStatus(
+    id: string,
+    status: ContactInquiry['status'],
+    adminNotes?: string
+  ): Promise<ContactInquiry | null> {
+    const db = readDb();
+    if (!db.contactInquiries) return null;
+    const index = db.contactInquiries.findIndex((i) => i.id === id);
+    if (index === -1) return null;
+    db.contactInquiries[index].status = status;
+    if (adminNotes !== undefined) db.contactInquiries[index].adminNotes = adminNotes;
+    db.contactInquiries[index].updatedAt = new Date().toISOString();
+    writeDb(db);
+    return db.contactInquiries[index];
+  },
+};
+

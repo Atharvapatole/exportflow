@@ -1,11 +1,11 @@
 import React from 'react';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { infraConfig } from '@/config/infrastructure';
 import { Settings, ShieldCheck, Key, Server } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 
 export default async function AdminSettingsPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
   const bootstrap = infraConfig.getAdminBootstrapConfig();

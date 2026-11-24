@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { adminRepo } from '@/lib/db';
 
 const revenueSchema = z.object({
@@ -17,7 +17,7 @@ const revenueSchema = z.object({
 });
 
 export async function GET() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -28,7 +28,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const ctx = await getCurrentContext();
+    const ctx = await getAdminContext();
     if (!ctx || !ctx.isSuperAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

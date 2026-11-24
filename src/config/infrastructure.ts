@@ -1,17 +1,15 @@
 /**
  * InfrastructureConfigService
  * Centralized, secure configuration service for all backend infrastructure,
- * external API integrations, storage, and application environment settings.
+ * Supabase integrations, storage, AI, email, and application environment settings.
  *
  * All secret keys are strictly server-side and never exposed to the client.
  */
 
-export interface AppwriteConfig {
-  endpoint: string;
-  projectId: string;
-  apiKey?: string;
-  databaseId: string;
-  bucketId: string;
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+  serviceRoleKey?: string;
   isConfigured: boolean;
 }
 
@@ -44,7 +42,7 @@ export interface AdminBootstrapConfig {
 export interface SystemConfig {
   appUrl: string;
   environment: 'development' | 'production' | 'test';
-  appwrite: AppwriteConfig;
+  supabase: SupabaseConfig;
   imagekit: ImageKitConfig;
   email: EmailConfig;
   ai: AiConfig;
@@ -78,27 +76,23 @@ class InfrastructureConfigService {
     return 'development';
   }
 
-  public getAppwriteConfig(): AppwriteConfig {
-    const endpoint =
-      process.env.APPWRITE_ENDPOINT ||
-      process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT ||
-      'https://cloud.appwrite.io/v1';
-    const projectId =
-      process.env.APPWRITE_PROJECT_ID ||
-      process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID ||
+  public getSupabaseConfig(): SupabaseConfig {
+    const url =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
       '';
-    const apiKey = process.env.APPWRITE_API_KEY || '';
-    const databaseId = process.env.APPWRITE_DATABASE_ID || 'exportflow_db';
-    const bucketId = process.env.APPWRITE_BUCKET_ID || 'exportflow_documents';
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      '';
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-    const isConfigured = Boolean(projectId && apiKey);
+    const isConfigured = Boolean(url && anonKey);
 
     return {
-      endpoint,
-      projectId,
-      apiKey: typeof window === 'undefined' ? apiKey : undefined,
-      databaseId,
-      bucketId,
+      url,
+      anonKey,
+      serviceRoleKey: typeof window === 'undefined' ? serviceRoleKey : undefined,
       isConfigured,
     };
   }
@@ -152,23 +146,23 @@ class InfrastructureConfigService {
 
   public getAdminBootstrapConfig(): AdminBootstrapConfig {
     return {
-      email: process.env.ADMIN_BOOTSTRAP_EMAIL || 'admin@benzwell.com',
+      email: process.env.ADMIN_BOOTSTRAP_EMAIL || 'info@benzwell.in',
       secret: process.env.ADMIN_BOOTSTRAP_SECRET || 'BenzwellAdmin2026!SecureKey',
     };
   }
 
   public getPublicConfig() {
+    const supabase = this.getSupabaseConfig();
     return {
       appUrl: this.getAppUrl(),
       environment: this.getEnvironment(),
-      appwriteEndpoint: this.getAppwriteConfig().endpoint,
-      appwriteProjectId: this.getAppwriteConfig().projectId,
+      supabaseUrl: supabase.url,
       imageKitPublicKey: this.getImageKitConfig().publicKey,
       imageKitUrlEndpoint: this.getImageKitConfig().urlEndpoint,
       features: {
+        supabaseConfigured: supabase.isConfigured,
         aiEnabled: this.getAiConfig().isConfigured,
         emailEnabled: this.getEmailConfig().isConfigured,
-        cloudStorageEnabled: this.getAppwriteConfig().isConfigured,
       },
     };
   }

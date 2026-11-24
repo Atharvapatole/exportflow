@@ -17,6 +17,9 @@ import {
   ShieldAlert,
   Settings,
   ArrowLeft,
+  Sparkles,
+  CreditCard,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAVIGATION } from '@/config/constants';
@@ -34,13 +37,16 @@ const ADMIN_ICON_MAP: Record<string, React.ElementType> = {
   Cpu,
   ShieldAlert,
   Settings,
+  Sparkles,
+  CreditCard,
+  Mail,
 };
 
 export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-[#08121E] text-slate-300 flex flex-col shrink-0 h-screen sticky top-0 border-r border-slate-800 z-30 select-none">
+    <aside className="w-64 bg-[#08121E] text-slate-300 flex flex-col shrink-0 h-screen sticky top-0 border-r border-slate-800 z-30 select-none no-print">
       {/* Admin Branding */}
       <div className="p-4 border-b border-slate-800 bg-[#040A12] flex flex-col gap-1.5">
         <div className="flex items-center gap-2">

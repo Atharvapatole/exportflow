@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { userRepo, orgRepo } from '@/lib/db';
 import { User, Organization, OrganizationMember, UserRole } from '@/types';
 import { infraConfig } from '@/config/infrastructure';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const SESSION_COOKIE_NAME = 'exportflow_session';
 
@@ -157,22 +158,139 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
   };
 }
 
+export const getAuthContext = getCurrentContext;
+
+/**
+ * Dedicated server-side Super Admin authorization context.
+ * In local development (NODE_ENV !== 'production'):
+ * Automatically provides direct, immediate access to the Super Admin Dashboard without requiring any login screen.
+ * In production (NODE_ENV === 'production'):
+ * Strictly enforces server-side Super Admin session verification.
+ */
+export async function getAdminContext(): Promise<CurrentUserContext | null> {
+  const ctx = await getCurrentContext();
+  if (ctx && ctx.isSuperAdmin) {
+    return ctx;
+  }
+
+  // Local development direct access:
+  // Automatically provision and return Super Admin context without any login screen
+  if (process.env.NODE_ENV !== 'production') {
+    await ensureSuperAdminInitialized();
+    const adminConfig = infraConfig.getAdminBootstrapConfig();
+    const adminUser = await userRepo.findByEmail(adminConfig.email);
+    if (adminUser) {
+      // In local development, also ensure the session cookie is set so client-side API requests succeed seamlessly
+      try {
+        await setSessionCookie({
+          userId: adminUser.id,
+          email: adminUser.email,
+          name: adminUser.name,
+          role: 'super_admin',
+        });
+      } catch {}
+
+      return {
+        user: adminUser,
+        organization: null,
+        member: {
+          id: 'admin_override',
+          organizationId: 'admin_org',
+          userId: adminUser.id,
+          role: 'super_admin',
+          userEmail: adminUser.email,
+          userName: adminUser.name,
+          status: 'active',
+          joinedAt: adminUser.createdAt,
+        },
+        isSuperAdmin: true,
+      };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Bootstrap Super Admin initialization check
  */
 export async function ensureSuperAdminInitialized(): Promise<void> {
   const adminConfig = infraConfig.getAdminBootstrapConfig();
-  const existing = await userRepo.findByEmail(adminConfig.email);
+  const targetEmail = adminConfig.email.trim().toLowerCase();
+
+  // 1. Check local DB
+  const existing = await userRepo.findByEmail(targetEmail);
   if (!existing) {
-    await userRepo.create({
-      name: 'Super Admin (BENZWELL)',
-      email: adminConfig.email,
-      passwordHash: hashPassword(adminConfig.secret),
+    // If old admin@benzwell.com exists, migrate it cleanly
+    const oldAdmin = await userRepo.findByEmail('admin@benzwell.com');
+    if (oldAdmin) {
+      await userRepo.update(oldAdmin.id, {
+        email: targetEmail,
+        name: 'Super Admin (BENZWELL)',
+        role: 'super_admin',
+        passwordHash: hashPassword(adminConfig.secret),
+        status: 'active',
+      });
+      console.log(`[BOOTSTRAP] Super admin migrated from admin@benzwell.com to ${targetEmail}`);
+    } else {
+      await userRepo.create({
+        name: 'Super Admin (BENZWELL)',
+        email: targetEmail,
+        passwordHash: hashPassword(adminConfig.secret),
+        role: 'super_admin',
+        status: 'active',
+      });
+      console.log(`[BOOTSTRAP] Super admin created for: ${targetEmail}`);
+    }
+  } else {
+    // Ensure role is super_admin and status active, but DO NOT overwrite custom/reset passwordHash
+    const updateData: Partial<User> = {
       role: 'super_admin',
       status: 'active',
-    });
-    console.log(`[BOOTSTRAP] Super admin created for: ${adminConfig.email}`);
-  } else if (existing.role !== 'super_admin') {
-    await userRepo.update(existing.id, { role: 'super_admin' });
+    };
+    if (!existing.passwordHash) {
+      updateData.passwordHash = hashPassword(adminConfig.secret);
+    }
+    await userRepo.update(existing.id, updateData);
+  }
+
+  // 2. Also ensure Supabase Auth and public.profiles have info@benzwell.in
+  try {
+    const adminClient = createAdminClient();
+    if (adminClient) {
+      const { data: supaUsers } = await adminClient.auth.admin.listUsers();
+      const supaUser = supaUsers?.users?.find((u) => u.email?.toLowerCase() === targetEmail);
+      if (!supaUser) {
+        const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
+          email: targetEmail,
+          password: adminConfig.secret,
+          email_confirm: true,
+          user_metadata: { role: 'super_admin', name: 'Super Admin (BENZWELL)' },
+        });
+        if (!createErr && newUser?.user) {
+          await adminClient.from('profiles').upsert({
+            id: newUser.user.id,
+            email: targetEmail,
+            name: 'Super Admin (BENZWELL)',
+            role: 'super_admin',
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } else {
+        // Ensure metadata and profile have super_admin role, but do not overwrite updated password
+        await adminClient.auth.admin.updateUserById(supaUser.id, {
+          user_metadata: { role: 'super_admin', name: 'Super Admin (BENZWELL)' },
+        });
+        await adminClient.from('profiles').upsert({
+          id: supaUser.id,
+          email: targetEmail,
+          name: 'Super Admin (BENZWELL)',
+          role: 'super_admin',
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn('[BOOTSTRAP] Supabase admin sync warning:', err.message);
   }
 }

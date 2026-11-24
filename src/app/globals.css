@@ -31,6 +31,37 @@
     --warning: #F59E0B;
     --info: #3B82F6;
   }
+
+  .dark {
+    --primary: #0F172A;
+    --primary-foreground: #F8FAFC;
+
+    --secondary: #3B82F6;
+    --secondary-foreground: #FFFFFF;
+
+    --accent: #10B981;
+    --accent-foreground: #FFFFFF;
+
+    --background: #0B0F17;
+    --foreground: #F1F5F9;
+
+    --card: #131B2A;
+    --card-foreground: #F8FAFC;
+
+    --muted: #1E293B;
+    --muted-foreground: #94A3B8;
+
+    --border: #243047;
+    --input: #243047;
+    --ring: #3B82F6;
+
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+
+    --success: #10B981;
+    --warning: #F59E0B;
+    --info: #3B82F6;
+  }
 }
 
 body {
@@ -57,11 +88,104 @@ body {
   background: #94a3b8;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Ensure document print canvas and export previews ALWAYS retain clean, white paper styling even in Dark Mode */
+.quotation-canvas,
+.quotation-canvas *,
+.quotation-pdf-container,
+.quotation-pdf-container *,
+.exportflow-document,
+.exportflow-document *,
+#document-print-area,
+#document-print-area * {
+  color-scheme: light !important;
+}
+
+.quotation-canvas,
+.quotation-pdf-container,
+.exportflow-document,
+#document-print-area {
+  background-color: #ffffff !important;
+  color: #172033 !important;
+}
+
+/* =============================================================================
+   EXPORTFLOW PRINT & PDF GENERATION STYLING
+   Isolates document-only rendering and suppresses all UI navigation and buttons
+   ============================================================================= */
 @media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
   body {
     background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #172033 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .no-print {
+
+  /* Completely suppress all navigation, sidebars, headers, action bars, buttons, and layout chrome */
+  .no-print,
+  aside,
+  header,
+  nav,
+  footer,
+  button,
+  [role="banner"],
+  [role="navigation"],
+  [data-no-print] {
     display: none !important;
+  }
+
+  /* Reset layout wrappers so there is no flex offset, sidebar gap or scroll container */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .min-h-screen,
+  .bg-\[\#F7F9FC\] {
+    background: transparent !important;
+    min-height: auto !important;
+    display: block !important;
+  }
+
+  /* Pristine document presentation */
+  #document-print-area {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    border-radius: 0 !important;
+    page-break-after: auto;
+  }
+
+  /* Prevent awkward page break splits inside table rows, cards, or signatory sections */
+  tr,
+  .avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }

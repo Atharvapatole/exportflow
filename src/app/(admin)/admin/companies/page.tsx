@@ -1,11 +1,11 @@
 import React from 'react';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { orgRepo, userRepo, documentRepo } from '@/lib/db';
 import { Building2, Globe, FileText, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default async function AdminCompaniesPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
   const companies = await orgRepo.listAll();

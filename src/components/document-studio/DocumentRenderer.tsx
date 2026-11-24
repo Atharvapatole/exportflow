@@ -3,7 +3,8 @@ import { BaseDocument } from '@/types';
 import { ClassicCorporateTemplate } from './templates/ClassicCorporate';
 import { ModernMinimalTemplate } from './templates/ModernMinimal';
 import { InternationalTradeTemplate } from './templates/InternationalTrade';
-import { PremiumProfessionalTemplate, CompactBusinessTemplate } from './templates/PremiumProfessional';
+import { PremiumInternationalTemplate } from './templates/PremiumInternational';
+import { CompactBusinessTemplate } from './templates/CompactBusiness';
 
 export function DocumentRenderer({ doc }: { doc: BaseDocument }) {
   const templateId = doc.templateId || 'classic-corporate';
@@ -13,8 +14,9 @@ export function DocumentRenderer({ doc }: { doc: BaseDocument }) {
       return <ModernMinimalTemplate doc={doc} />;
     case 'international-trade':
       return <InternationalTradeTemplate doc={doc} />;
+    case 'premium-international':
     case 'premium-professional':
-      return <PremiumProfessionalTemplate doc={doc} />;
+      return <PremiumInternationalTemplate doc={doc} />;
     case 'compact-business':
       return <CompactBusinessTemplate doc={doc} />;
     case 'classic-corporate':

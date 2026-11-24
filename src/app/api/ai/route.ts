@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentContext } from '@/lib/auth';
 import { orgRepo, productRepo, buyerRepo, documentRepo } from '@/lib/db';
-import { infraConfig } from '@/config/infrastructure';
+import { runAiCompletion } from '@/lib/ai/aiService';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,8 +13,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const userPrompt = body.prompt;
     if (!userPrompt) return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
-
-    const aiConfig = infraConfig.getAiConfig();
 
     // Tenant-isolated context
     const [profile, products, buyers, recentDocs] = await Promise.all([
@@ -42,45 +42,41 @@ RULES:
 - Never claim to have sent an email, charged money, or submitted documents to government customs.
 - Clearly present drafted emails with Subject line and Body.`;
 
-    if (aiConfig.isConfigured && aiConfig.apiKey) {
-      // Call OpenRouter API
-      const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${aiConfig.apiKey}`,
-          'HTTP-Referer': infraConfig.getAppUrl(),
-          'X-Title': 'ExportFlow by BENZWELL',
-        },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          messages: [
-            { role: 'system', content: systemContext },
-            { role: 'user', content: userPrompt },
-          ],
-        }),
+    try {
+      const completion = await runAiCompletion(
+        [
+          { role: 'system', content: systemContext },
+          { role: 'user', content: userPrompt },
+        ],
+        {
+          organizationId: ctx.organization.id,
+          userId: ctx.user.id,
+          userIntent: 'export_advisory_chat',
+        }
+      );
+
+      return NextResponse.json({
+        reply: completion.text,
+        model: completion.model,
+        provider: completion.provider,
       });
+    } catch (aiErr: any) {
+      console.warn('Unified AI completion fallback triggered:', aiErr.message);
 
-      if (openRouterRes.ok) {
-        const json = await openRouterRes.json();
-        const reply = json.choices?.[0]?.message?.content || 'No response received from model.';
-        return NextResponse.json({ reply, model: aiConfig.model });
+      // Graceful offline fallback expert rule engine if no provider keys configured
+      let simulatedReply = '';
+      const lower = userPrompt.toLowerCase();
+
+      if (lower.includes('email') || lower.includes('quotation')) {
+        simulatedReply = `Subject: Official Export Quotation — ${profile?.legalName || 'Apex Global Exports'}\n\nDear Purchasing Team,\n\nThank you for your inquiry regarding our export product line.\n\nWe are pleased to submit our formal Export Quotation for your review. All prices have been quoted under standard Incoterms 2020 rules with seaworthy export packaging.\n\nPlease find the attached formal quotation and technical data sheet. We look forward to confirming your specifications and issuing the formal Proforma Invoice.\n\nWarm regards,\n${profile?.primaryContactName || ctx.user.name}\n${profile?.legalName || ctx.organization.name}`;
+      } else if (lower.includes('incoterm') || lower.includes('fob') || lower.includes('cif')) {
+        simulatedReply = `Under Incoterms 2020:\n- **FOB (Free on Board):** As the exporter, your obligation ends once the goods pass over the vessel's rail at the origin port. The buyer pays international ocean freight and marine cargo insurance.\n- **CIF (Cost, Insurance & Freight):** You (the exporter) arrange and pay for the ocean freight and obtain minimum cargo insurance up to the named destination port. Risk transfers to the buyer once goods are on board the ship.`;
+      } else {
+        simulatedReply = `ExportFlow Assistant Advisory:\n\nRegarding "${userPrompt}":\nFor international export transactions, ensure all commercial terms (payment milestones, Incoterm point of delivery, and currency fluctuation clause) are explicitly detailed in both your Quotation and Proforma Invoice before cargo dispatch.\n\n(Note: Configure your OpenRouter API key in Super Admin Settings > AI Engine to activate live multi-provider inference).`;
       }
+
+      return NextResponse.json({ reply: simulatedReply, fallback: true });
     }
-
-    // Graceful offline fallback expert rule engine if OpenRouter key is not yet set
-    let simulatedReply = '';
-    const lower = userPrompt.toLowerCase();
-
-    if (lower.includes('email') || lower.includes('quotation')) {
-      simulatedReply = `Subject: Official Export Quotation — ${profile?.legalName || 'Apex Global Exports'}\n\nDear Purchasing Team,\n\nThank you for your inquiry regarding our export product line.\n\nWe are pleased to submit our formal Export Quotation for your review. All prices have been quoted under standard Incoterms 2020 rules with seaworthy export packaging.\n\nPlease find the attached formal quotation and technical data sheet. We look forward to confirming your specifications and issuing the formal Proforma Invoice.\n\nWarm regards,\n${profile?.primaryContactName || ctx.user.name}\n${profile?.legalName || ctx.organization.name}`;
-    } else if (lower.includes('incoterm') || lower.includes('fob') || lower.includes('cif')) {
-      simulatedReply = `Under Incoterms 2020:\n- **FOB (Free on Board):** As the exporter, your obligation ends once the goods pass over the vessel's rail at the origin port. The buyer pays international ocean freight and marine cargo insurance.\n- **CIF (Cost, Insurance & Freight):** You (the exporter) arrange and pay for the ocean freight and obtain minimum cargo insurance up to the named destination port. Risk transfers to the buyer once goods are on board the ship.`;
-    } else {
-      simulatedReply = `ExportFlow Assistant Advisory:\n\nRegarding "${userPrompt}":\nFor international export transactions, ensure all commercial terms (payment milestones, Incoterm point of delivery, and currency fluctuation clause) are explicitly detailed in both your Quotation and Proforma Invoice before cargo dispatch.\n\n(Note: Connect your OpenRouter API key in environment variables to unlock real-time live LLM inference).`;
-    }
-
-    return NextResponse.json({ reply: simulatedReply, fallback: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

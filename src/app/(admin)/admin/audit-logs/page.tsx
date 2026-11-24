@@ -1,11 +1,11 @@
 import React from 'react';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { adminRepo } from '@/lib/db';
 import { ShieldAlert, Clock } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default async function AdminAuditLogsPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
   const logs = await adminRepo.getAuditLogs();

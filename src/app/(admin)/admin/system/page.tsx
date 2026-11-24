@@ -37,7 +37,7 @@ export default function AdminSystemHealthPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">System Health & Infrastructure Center</h1>
-          <p className="text-xs text-slate-400">Live operational statuses for Appwrite, Database, Storage, ImageKit, Email & AI</p>
+          <p className="text-xs text-slate-400">Live operational statuses for Supabase, Database, Storage, ImageKit, Email & AI</p>
         </div>
         <Button
           size="sm"

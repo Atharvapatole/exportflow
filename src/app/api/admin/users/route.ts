@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { userRepo, adminRepo } from '@/lib/db';
 
 export async function GET() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

@@ -4,12 +4,13 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 interface AdminHeaderProps {
   adminEmail?: string;
 }
 
-export function AdminHeader({ adminEmail = 'admin@benzwell.com' }: AdminHeaderProps) {
+export function AdminHeader({ adminEmail = 'info@benzwell.in' }: AdminHeaderProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -23,7 +24,7 @@ export function AdminHeader({ adminEmail = 'admin@benzwell.com' }: AdminHeaderPr
   };
 
   return (
-    <header className="h-16 bg-[#0B1524] border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20 text-white">
+    <header className="h-16 bg-[#0B1524] border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20 text-white no-print">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -33,6 +34,7 @@ export function AdminHeader({ adminEmail = 'admin@benzwell.com' }: AdminHeaderPr
       </div>
 
       <div className="flex items-center gap-4">
+        <ThemeToggle className="text-slate-300 hover:text-white hover:bg-slate-800" />
         <div className="flex items-center gap-2 text-xs text-slate-300">
           <ShieldCheck className="w-4 h-4 text-amber-400" />
           <span>{adminEmail}</span>

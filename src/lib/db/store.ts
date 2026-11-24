@@ -1,5 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  RazorpayConfig,
+  RazorpayWebhookEvent,
+  RazorpayPaymentLog,
+  OrganizationWallet,
+  OrganizationSubscription,
+  ContactInquiry,
+  ThemeMode,
+} from '@/types';
 
 /**
  * Robust JSON File-based Store for local persistence.
@@ -25,6 +34,16 @@ export interface DatabaseState {
   platformRevenue: any[];
   auditLogs: any[];
   platformActivity: any[];
+  aiProviderConfig?: any;
+  aiUsageLogs: any[];
+  quotationRevisions: any[];
+  razorpayConfig?: RazorpayConfig;
+  razorpayWebhookEvents: RazorpayWebhookEvent[];
+  razorpayPaymentLogs: RazorpayPaymentLog[];
+  organizationWallets: OrganizationWallet[];
+  organizationSubscriptions: OrganizationSubscription[];
+  contactInquiries: ContactInquiry[];
+  userThemePreferences: Record<string, ThemeMode>;
 }
 
 const defaultState: DatabaseState = {
@@ -43,6 +62,56 @@ const defaultState: DatabaseState = {
   platformRevenue: [],
   auditLogs: [],
   platformActivity: [],
+  aiProviderConfig: {
+    id: '00000000-0000-0000-0000-000000000001',
+    isEnabled: true,
+    primaryProvider: 'openrouter',
+    openrouterApiKey: '',
+    openrouterModel: 'openrouter/free',
+    openrouterModelMode: 'auto_free',
+    openrouterAvailableModels: [],
+    openrouterIsEnabled: true,
+    backupProvider1: 'groq',
+    backupProvider2: 'gemini',
+    backupProvider: 'groq',
+    groqApiKey: '',
+    groqModel: 'llama-3.3-70b-versatile',
+    groqIsEnabled: true,
+    geminiApiKey: '',
+    geminiModel: 'gemini-2.0-flash',
+    geminiIsEnabled: true,
+    requestTimeout: 30000,
+    maxRetries: 2,
+    maxInputLength: 6000,
+    dailyLimit: 1000,
+    status: 'healthy',
+    updatedAt: new Date().toISOString(),
+  },
+  aiUsageLogs: [],
+  quotationRevisions: [],
+  razorpayConfig: {
+    id: '00000000-0000-0000-0000-000000000002',
+    isEnabled: false,
+    mode: 'test',
+    testKeyId: '',
+    testKeySecret: '',
+    testWebhookSecret: '',
+    liveKeyId: '',
+    liveKeySecret: '',
+    liveWebhookSecret: '',
+    merchantDisplayName: 'ExportFlow by BENZWELL',
+    merchantSupportEmail: 'info@benzwell.in',
+    status: 'unconfigured',
+    lastConfigUpdate: new Date().toISOString(),
+    webhookStatus: 'unverified',
+    failedWebhookCount: 0,
+  },
+  razorpayWebhookEvents: [],
+  razorpayPaymentLogs: [],
+  organizationWallets: [],
+  organizationSubscriptions: [],
+  contactInquiries: [],
+  userThemePreferences: {},
 };
 
 function ensureDbFile(): void {
@@ -62,7 +131,15 @@ export function readDb(): DatabaseState {
   ensureDbFile();
   try {
     const data = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(data) as DatabaseState;
+    const parsed = JSON.parse(data) as DatabaseState;
+    if (!parsed.razorpayConfig) parsed.razorpayConfig = defaultState.razorpayConfig;
+    if (!parsed.razorpayWebhookEvents) parsed.razorpayWebhookEvents = [];
+    if (!parsed.razorpayPaymentLogs) parsed.razorpayPaymentLogs = [];
+    if (!parsed.organizationWallets) parsed.organizationWallets = [];
+    if (!parsed.organizationSubscriptions) parsed.organizationSubscriptions = [];
+    if (!parsed.contactInquiries) parsed.contactInquiries = [];
+    if (!parsed.userThemePreferences) parsed.userThemePreferences = {};
+    return parsed;
   } catch (err) {
     console.error('Error reading db file, falling back to default:', err);
     return defaultState;

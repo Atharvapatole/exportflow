@@ -12,10 +12,12 @@ import {
   Trash2,
   Check,
   ExternalLink,
+  Printer,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ConvertModal } from './ConvertModal';
 import { BaseDocument } from '@/types';
+import { downloadDocumentPdf, openIsolatedPrintWindow } from '@/lib/pdf/downloadDocument';
 
 interface DocumentActionsProps {
   document: BaseDocument;
@@ -36,8 +38,12 @@ export function DocumentActions({ document: doc }: DocumentActionsProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadPdf = async () => {
+    await downloadDocumentPdf(doc);
+  };
+
   const handlePrint = () => {
-    window.print();
+    openIsolatedPrintWindow(doc.id, true);
   };
 
   const handleDelete = async () => {
@@ -79,9 +85,24 @@ export function DocumentActions({ document: doc }: DocumentActionsProps) {
             </Button>
           )}
 
-          <Button size="sm" variant="outline" onClick={handlePrint} className="gap-1.5">
+          <Button
+            size="sm"
+            onClick={handleDownloadPdf}
+            className="gap-1.5 bg-blue-600 hover:bg-blue-500 text-white shadow-xs font-semibold"
+          >
             <Download className="w-4 h-4" />
-            <span>Download PDF / Print</span>
+            <span>Download PDF</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePrint}
+            className="gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-50"
+            title="Open isolated print preview"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print</span>
           </Button>
 
           <Button

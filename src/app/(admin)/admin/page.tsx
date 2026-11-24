@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { adminRepo, userRepo, orgRepo, documentRepo } from '@/lib/db';
 import {
   Users,
@@ -20,7 +20,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default async function SuperAdminDashboardPage() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) return null;
 
   const [stats, users, companies, activities] = await Promise.all([

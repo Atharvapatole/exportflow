@@ -25,6 +25,7 @@ import {
   Megaphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { TrialBanner } from '@/components/dashboard/TrialBanner';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -94,7 +95,7 @@ export default async function DashboardPage() {
             Welcome, {ctx.user.name}
           </h1>
           <p className="text-xs text-slate-300 mt-1 max-w-xl">
-            {ctx.organization.name} • {ctx.organization.country} • Free Launch Edition
+            {ctx.organization.name} • {ctx.organization.country} • ExportFlow Workspace
           </p>
         </div>
 
@@ -119,6 +120,9 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* 3-Day Free Trial / Plan Banner */}
+      <TrialBanner />
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getCurrentContext } from '@/lib/auth';
+import { getAdminContext } from '@/lib/auth';
 import { infraConfig } from '@/config/infrastructure';
 import { readDb } from '@/lib/db/store';
 
 export async function GET() {
-  const ctx = await getCurrentContext();
+  const ctx = await getAdminContext();
   if (!ctx || !ctx.isSuperAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const appwriteCfg = infraConfig.getAppwriteConfig();
+  const supabaseCfg = infraConfig.getSupabaseConfig();
   const imagekitCfg = infraConfig.getImageKitConfig();
   const emailCfg = infraConfig.getEmailConfig();
   const aiCfg = infraConfig.getAiConfig();
@@ -29,14 +29,14 @@ export async function GET() {
     {
       name: 'Primary Database',
       status: dbHealthy ? 'healthy' : 'unhealthy',
-      type: appwriteCfg.isConfigured ? 'Appwrite Cloud DB' : 'Local Persistent Storage Engine',
+      type: supabaseCfg.isConfigured ? 'Supabase PostgreSQL' : 'Local Persistent Storage Engine',
       latency: '< 5ms',
     },
     {
-      name: 'Appwrite Cloud Infrastructure',
-      status: appwriteCfg.isConfigured ? 'healthy' : 'not_configured',
-      type: 'BaaS / Storage',
-      details: appwriteCfg.isConfigured ? `Project: ${appwriteCfg.projectId}` : 'Environment keys pending',
+      name: 'Supabase Cloud Infrastructure',
+      status: supabaseCfg.isConfigured ? 'healthy' : 'not_configured',
+      type: 'PostgreSQL / Storage / Auth',
+      details: supabaseCfg.isConfigured ? `Endpoint: ${supabaseCfg.url}` : 'Environment keys pending (.env.local)',
     },
     {
       name: 'ImageKit Media CDN',
