@@ -58,7 +58,28 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (err: any) {
-      console.warn('[LOGIN] Supabase auth attempt note:', err.message);
+      console.warn('[LOGIN] Supabase SSR auth attempt note:', err.message);
+    }
+
+    if (!supaAuthSuccess) {
+      try {
+        const { createClient: createSupabaseJsClient } = await import('@supabase/supabase-js');
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+        if (url && anonKey) {
+          const directClient = createSupabaseJsClient(url, anonKey);
+          const { data: directData, error: directErr } = await directClient.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+          if (directData?.user && !directErr) {
+            supaUser = directData.user;
+            supaAuthSuccess = true;
+          }
+        }
+      } catch (directErr: any) {
+        console.warn('[LOGIN] Direct Supabase auth attempt note:', directErr.message);
+      }
     }
 
     let user = await userRepo.findByEmail(cleanEmail);
@@ -240,7 +261,7 @@ export async function POST(req: NextRequest) {
     // Explicitly attach Set-Cookie header directly to response
     response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // Ensures cookie is sent on localhost and production without SSL drops
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 30, // 30 days

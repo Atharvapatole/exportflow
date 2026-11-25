@@ -35,13 +35,69 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export const userRepo = {
   async findById(id: string): Promise<User | null> {
     const db = readDb();
-    return db.users.find((u) => u.id === id) || null;
+    const local = db.users.find((u) => u.id === id);
+    if (local) return local;
+
+    // Check Supabase public.profiles
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: prof } = await adminClient.from('profiles').select('*').eq('id', id).single();
+        if (prof) {
+          const user: User = {
+            id: prof.id,
+            email: prof.email,
+            name: prof.name || prof.email.split('@')[0],
+            role: prof.role || 'owner',
+            status: prof.status || 'active',
+            currentOrgId: prof.current_org_id || undefined,
+            createdAt: prof.created_at || new Date().toISOString(),
+            updatedAt: prof.updated_at || new Date().toISOString(),
+          };
+          if (!db.users.some((u) => u.id === user.id)) {
+            db.users.push(user);
+            writeDb(db);
+          }
+          return user;
+        }
+      }
+    } catch {}
+
+    return null;
   },
 
   async findByEmail(email: string): Promise<User | null> {
     const db = readDb();
     const cleanEmail = email.trim().toLowerCase();
-    return db.users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
+    const local = db.users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (local) return local;
+
+    // Check Supabase public.profiles
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: prof } = await adminClient.from('profiles').select('*').ilike('email', cleanEmail).single();
+        if (prof) {
+          const user: User = {
+            id: prof.id,
+            email: prof.email,
+            name: prof.name || prof.email.split('@')[0],
+            role: prof.role || 'owner',
+            status: prof.status || 'active',
+            currentOrgId: prof.current_org_id || undefined,
+            createdAt: prof.created_at || new Date().toISOString(),
+            updatedAt: prof.updated_at || new Date().toISOString(),
+          };
+          if (!db.users.some((u) => u.id === user.id)) {
+            db.users.push(user);
+            writeDb(db);
+          }
+          return user;
+        }
+      }
+    } catch {}
+
+    return null;
   },
 
   async create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<User> {
@@ -60,13 +116,29 @@ export const userRepo = {
   async update(id: string, updates: Partial<User>): Promise<User | null> {
     const db = readDb();
     const index = db.users.findIndex((u) => u.id === id);
-    if (index === -1) return null;
+    if (index === -1) {
+      // If user not in local store, fetch it first
+      const found = await userRepo.findById(id);
+      if (!found) return null;
+      return userRepo.update(id, updates);
+    }
     db.users[index] = {
       ...db.users[index],
       ...updates,
       updatedAt: new Date().toISOString(),
     };
     writeDb(db);
+
+    // Sync to Supabase profile if currentOrgId changed
+    if (updates.currentOrgId) {
+      try {
+        const adminClient = createAdminClient();
+        if (adminClient) {
+          await adminClient.from('profiles').update({ current_org_id: updates.currentOrgId }).eq('id', id);
+        }
+      } catch {}
+    }
+
     return db.users[index];
   },
 
@@ -80,16 +152,98 @@ export const userRepo = {
 export const orgRepo = {
   async findById(id: string): Promise<Organization | null> {
     const db = readDb();
-    return db.organizations.find((o) => o.id === id) || null;
+    const local = db.organizations.find((o) => o.id === id);
+    if (local) return local;
+
+    // Check Supabase public.organizations
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: orgRow } = await adminClient.from('organizations').select('*').eq('id', id).single();
+        if (orgRow) {
+          const org: Organization = {
+            id: orgRow.id,
+            name: orgRow.name,
+            slug: orgRow.slug || orgRow.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            ownerId: orgRow.owner_id,
+            country: orgRow.country || 'India',
+            businessType: orgRow.business_type || 'Manufacturer & Exporter',
+            createdAt: orgRow.created_at || new Date().toISOString(),
+            updatedAt: orgRow.updated_at || new Date().toISOString(),
+          };
+          if (!db.organizations.some((o) => o.id === org.id)) {
+            db.organizations.push(org);
+            writeDb(db);
+          }
+          return org;
+        }
+      }
+    } catch {}
+
+    return null;
   },
 
   async getMember(orgId: string, userId: string): Promise<OrganizationMember | null> {
     const db = readDb();
-    return (
-      db.organizationMembers.find(
-        (m) => m.organizationId === orgId && m.userId === userId && m.status === 'active'
-      ) || null
+    const local = db.organizationMembers.find(
+      (m) => m.organizationId === orgId && m.userId === userId && m.status === 'active'
     );
+    if (local) return local;
+
+    // Check Supabase public.organization_members
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: memRow } = await adminClient
+          .from('organization_members')
+          .select('*')
+          .eq('organization_id', orgId)
+          .eq('user_id', userId)
+          .single();
+
+        if (memRow) {
+          const user = await userRepo.findById(userId);
+          const member: OrganizationMember = {
+            id: memRow.id,
+            organizationId: memRow.organization_id,
+            userId: memRow.user_id,
+            role: memRow.role || 'owner',
+            userEmail: user?.email || '',
+            userName: user?.name || '',
+            status: memRow.status || 'active',
+            joinedAt: memRow.joined_at || new Date().toISOString(),
+          };
+          if (!db.organizationMembers.some((m) => m.id === member.id)) {
+            db.organizationMembers.push(member);
+            writeDb(db);
+          }
+          return member;
+        }
+
+        // Check if user is the owner of the organization
+        const { data: orgRow } = await adminClient.from('organizations').select('*').eq('id', orgId).single();
+        if (orgRow && orgRow.owner_id === userId) {
+          const user = await userRepo.findById(userId);
+          const member: OrganizationMember = {
+            id: `mem_${orgId}_${userId}`,
+            organizationId: orgId,
+            userId: userId,
+            role: 'owner',
+            userEmail: user?.email || '',
+            userName: user?.name || '',
+            status: 'active',
+            joinedAt: orgRow.created_at || new Date().toISOString(),
+          };
+          if (!db.organizationMembers.some((m) => m.id === member.id)) {
+            db.organizationMembers.push(member);
+            writeDb(db);
+          }
+          return member;
+        }
+      }
+    } catch {}
+
+    return null;
   },
 
   async listByUser(userId: string): Promise<Organization[]> {
@@ -97,7 +251,35 @@ export const orgRepo = {
     const memberOrgs = db.organizationMembers
       .filter((m) => m.userId === userId && m.status === 'active')
       .map((m) => m.organizationId);
-    return db.organizations.filter((o) => memberOrgs.includes(o.id));
+    const localOrgs = db.organizations.filter((o) => memberOrgs.includes(o.id) || o.ownerId === userId);
+    if (localOrgs.length > 0) return localOrgs;
+
+    // Check Supabase
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: ownedOrgs } = await adminClient.from('organizations').select('*').eq('owner_id', userId);
+        if (ownedOrgs && ownedOrgs.length > 0) {
+          const orgs: Organization[] = ownedOrgs.map((orgRow) => ({
+            id: orgRow.id,
+            name: orgRow.name,
+            slug: orgRow.slug || orgRow.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            ownerId: orgRow.owner_id,
+            country: orgRow.country || 'India',
+            businessType: orgRow.business_type || 'Manufacturer & Exporter',
+            createdAt: orgRow.created_at || new Date().toISOString(),
+            updatedAt: orgRow.updated_at || new Date().toISOString(),
+          }));
+          for (const o of orgs) {
+            if (!db.organizations.some((x) => x.id === o.id)) db.organizations.push(o);
+          }
+          writeDb(db);
+          return orgs;
+        }
+      }
+    } catch {}
+
+    return [];
   },
 
   async create(
