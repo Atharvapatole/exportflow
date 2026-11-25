@@ -113,13 +113,13 @@ export async function POST(req: NextRequest) {
       details: `User logged in from web client`,
     });
 
-    const redirectUrl = isSuperAdmin ? '/admin' : '/dashboard';
+    const redirectUrl = '/dashboard';
 
     return NextResponse.json({
       success: true,
       message: 'Login successful',
       redirectUrl,
-      isSuperAdmin,
+      isSuperAdmin: false,
     });
   } catch (error: any) {
     console.error('Login error:', error);

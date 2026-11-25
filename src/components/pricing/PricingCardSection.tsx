@@ -17,114 +17,34 @@ export function PricingCardSection() {
   const router = useRouter();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [activeTab, setActiveTab] = useState<'subscriptions' | 'packs'>('subscriptions');
-  const [loadingItem, setLoadingItem] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Load Razorpay script on demand
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if (typeof window !== 'undefined' && window.Razorpay) {
-        resolve(true);
+  const handleClaimTrial = async () => {
+    try {
+      const res = await fetch('/api/trial/activate', { method: 'POST' });
+      const data = await res.json();
+      if (res.status === 401) {
+        router.push('/register?trial=3days');
         return;
       }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
+      if (res.ok) {
+        alert('Congratulations! Your 3-Day Free Growth Trial has been activated.');
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        alert(data.error || 'Trial activation failed. If you already used your trial, please choose a plan.');
+      }
+    } catch {
+      router.push('/register?trial=3days');
+    }
   };
 
-  const handleCheckout = async (itemId: string, itemType: 'subscription' | 'pack') => {
-    setErrorMsg(null);
-    setLoadingItem(itemId);
+  const handleChoosePlan = (planId: string) => {
+    router.push(`/checkout?plan=${planId}&interval=${billingCycle}`);
+  };
 
-    try {
-      const res = await fetch('/api/payments/razorpay/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          itemType,
-          itemId,
-          billingCycle: itemType === 'subscription' ? billingCycle : undefined,
-        }),
-      });
-
-      const orderData = await res.json();
-
-      if (res.status === 401) {
-        // Not logged in -> redirect to register with return intent
-        router.push(`/register?plan=${itemId}`);
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(orderData.error || 'Failed to initialize payment');
-      }
-
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error('Could not load Razorpay payment SDK. Please check your internet connection.');
-      }
-
-      const options = {
-        key: orderData.keyId,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: orderData.merchantName || 'ExportFlow by BENZWELL',
-        description: orderData.description,
-        order_id: orderData.orderId,
-        prefill: {
-          name: orderData.prefill?.name,
-          email: orderData.prefill?.email,
-          contact: orderData.prefill?.contact,
-        },
-        theme: {
-          color: '#10243A',
-        },
-        handler: async function (response: any) {
-          try {
-            const verifyRes = await fetch('/api/payments/razorpay/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            });
-
-            const verifyData = await verifyRes.json();
-            if (verifyRes.ok && verifyData.success) {
-              alert('Payment successful! Your account has been upgraded.');
-              router.push('/dashboard');
-              router.refresh();
-            } else {
-              alert(verifyData.error || 'Payment verification failed. Please contact support.');
-            }
-          } catch (err: any) {
-            alert('Verification network error: ' + err.message);
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            setLoadingItem(null);
-          },
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (resp: any) {
-        alert('Payment Failed: ' + (resp.error?.description || 'Payment was declined'));
-        setLoadingItem(null);
-      });
-      rzp.open();
-    } catch (err: any) {
-      console.error('Checkout error:', err);
-      setErrorMsg(err.message || 'Payment initiation failed.');
-    } finally {
-      setLoadingItem(null);
-    }
+  const handleChoosePack = (packId: string) => {
+    router.push(`/checkout?pack=${packId}`);
   };
 
   return (
@@ -236,10 +156,17 @@ export function PricingCardSection() {
                 </li>
               </ul>
             </div>
-            <div className="mt-8">
-              <Link href="/register">
-                <Button variant="outline" className="w-full text-xs">
-                  Get Started Free
+            <div className="mt-8 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full text-xs border-blue-500/30 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                onClick={handleClaimTrial}
+              >
+                Claim 3 Days Free Trial
+              </Button>
+              <Link href="/register" className="block w-full">
+                <Button variant="secondary" className="w-full text-xs">
+                  Choose Plan
                 </Button>
               </Link>
             </div>
@@ -290,14 +217,19 @@ export function PricingCardSection() {
                 </li>
               </ul>
             </div>
-            <div className="mt-8">
+            <div className="mt-8 space-y-2">
               <Button
-                variant="secondary"
-                className="w-full text-xs"
-                isLoading={loadingItem === 'starter'}
-                onClick={() => handleCheckout('starter', 'subscription')}
+                variant="outline"
+                className="w-full text-xs border-blue-500/30 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                onClick={handleClaimTrial}
               >
-                Choose Starter
+                Claim 3 Days Free Trial
+              </Button>
+              <Button
+                className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                onClick={() => handleChoosePlan('starter')}
+              >
+                Choose Plan
               </Button>
             </div>
           </div>
@@ -356,18 +288,18 @@ export function PricingCardSection() {
               </ul>
             </div>
             <div className="mt-8 space-y-2">
-              <Link href="/register">
-                <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs shadow-md">
-                  Start 3-Day Free Trial
-                </Button>
-              </Link>
               <Button
                 variant="outline"
                 className="w-full text-xs border-blue-400/40 text-blue-200 hover:bg-blue-900/40"
-                isLoading={loadingItem === 'growth'}
-                onClick={() => handleCheckout('growth', 'subscription')}
+                onClick={handleClaimTrial}
               >
-                Buy Now with Razorpay
+                Claim 3 Days Free Trial
+              </Button>
+              <Button
+                className="w-full text-xs bg-blue-500 hover:bg-blue-600 text-white font-bold shadow-md"
+                onClick={() => handleChoosePlan('growth')}
+              >
+                Choose Plan
               </Button>
             </div>
           </div>
@@ -421,14 +353,19 @@ export function PricingCardSection() {
                 </li>
               </ul>
             </div>
-            <div className="mt-8">
+            <div className="mt-8 space-y-2">
               <Button
-                variant="secondary"
-                className="w-full text-xs"
-                isLoading={loadingItem === 'business'}
-                onClick={() => handleCheckout('business', 'subscription')}
+                variant="outline"
+                className="w-full text-xs border-blue-500/30 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                onClick={handleClaimTrial}
               >
-                Choose Business
+                Claim 3 Days Free Trial
+              </Button>
+              <Button
+                className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                onClick={() => handleChoosePlan('business')}
+              >
+                Choose Plan
               </Button>
             </div>
           </div>
@@ -479,12 +416,10 @@ export function PricingCardSection() {
               </div>
               <div className="mt-8">
                 <Button
-                  variant="secondary"
-                  className="w-full text-xs"
-                  isLoading={loadingItem === pack.id}
-                  onClick={() => handleCheckout(pack.id, 'pack')}
+                  className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  onClick={() => handleChoosePack(pack.id)}
                 >
-                  Purchase Credit Pack
+                  Choose Plan
                 </Button>
               </div>
             </div>

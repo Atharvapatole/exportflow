@@ -145,16 +145,7 @@ export function Sidebar({ companyName = 'Your Company', isSuperAdmin = false }: 
       </nav>
 
       {/* Bottom Footer Actions */}
-      <div className="p-3 border-t border-slate-700/60 bg-[#0A1726]/60 space-y-2">
-        {isSuperAdmin && (
-          <Link
-            href="/admin"
-            className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold hover:bg-amber-500/20 transition-all"
-          >
-            <span>Control Center</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
-        )}
+      <div className="p-3 border-t border-slate-700/60 bg-[#0A1726]/60">
         <div className="flex items-center justify-between text-[11px] text-slate-400 px-2">
           <span>BENZWELL ExportFlow</span>
           <span className="text-blue-400 font-semibold">v2.4 Pro</span>

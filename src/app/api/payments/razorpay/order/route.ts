@@ -20,7 +20,9 @@ export async function POST(req: NextRequest) {
     let itemName = '';
     let creditsToAdd = undefined;
 
-    if (itemType === 'credit_pack') {
+    const normalizedItemType = itemType === 'pack' ? 'credit_pack' : itemType;
+
+    if (normalizedItemType === 'credit_pack') {
       const pack = PRICING_CATALOG.creditPacks.find((p) => p.id === itemId);
       if (!pack) {
         return NextResponse.json({ error: 'Invalid credit pack selected' }, { status: 400 });

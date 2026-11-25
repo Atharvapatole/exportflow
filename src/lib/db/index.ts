@@ -44,11 +44,11 @@ export const userRepo = {
     return db.users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
   },
 
-  async create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> {
+  async create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<User> {
     const db = readDb();
     const newUser: User = {
       ...user,
-      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: user.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -101,12 +101,12 @@ export const orgRepo = {
   },
 
   async create(
-    data: { name: string; businessType: string; country: string; ownerId: string },
+    data: { name: string; businessType: string; country: string; ownerId: string; id?: string },
     userEmail: string,
     userName: string
   ): Promise<{ organization: Organization; profile: CompanyProfile }> {
     const db = readDb();
-    const orgId = `org_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const orgId = data.id || `org_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
 
     const organization: Organization = {
