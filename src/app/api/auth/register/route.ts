@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { userRepo, orgRepo, adminRepo } from '@/lib/db';
-import { hashPassword, setSessionCookie, ensureSuperAdminInitialized } from '@/lib/auth';
+import {
+  hashPassword,
+  setSessionCookie,
+  ensureSuperAdminInitialized,
+  SESSION_COOKIE_NAME,
+  createSessionToken,
+  SessionData,
+} from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient as createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -197,19 +204,33 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    await setSessionCookie({
+    const sessionData: SessionData = {
       userId: newUser.id,
       email: newUser.email,
       name: newUser.name,
       role: newUser.role,
       orgId: organization.id,
-    });
+    };
 
-    return NextResponse.json({
+    await setSessionCookie(sessionData);
+
+    const token = createSessionToken(sessionData);
+
+    const response = NextResponse.json({
       success: true,
       message: 'Account created successfully and saved in Supabase',
       redirectUrl: '/dashboard',
     });
+
+    response.cookies.set(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+
+    return response;
   } catch (error: any) {
     console.error('Registration error:', error);
     return NextResponse.json(

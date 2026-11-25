@@ -33,8 +33,7 @@ export default function LoginPage() {
         throw new Error(data.error || 'Failed to login');
       }
 
-      router.push(data.redirectUrl || '/dashboard');
-      router.refresh();
+      window.location.href = data.redirectUrl || '/dashboard';
     } catch (err: any) {
       setError(err.message || 'An error occurred during login');
     } finally {

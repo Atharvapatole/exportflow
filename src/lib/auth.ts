@@ -6,7 +6,7 @@ import { infraConfig } from '@/config/infrastructure';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient as createSupabaseServerClient } from '@/lib/supabase/server';
 
-const SESSION_COOKIE_NAME = 'exportflow_session';
+export const SESSION_COOKIE_NAME = 'exportflow_session';
 
 export interface SessionData {
   userId: string;
@@ -79,6 +79,10 @@ export async function clearSessionCookie() {
   } catch {}
 }
 
+export function createSessionToken(data: SessionData): string {
+  return signToken(data);
+}
+
 export async function getSession(): Promise<SessionData | null> {
   try {
     const cookieStore = await cookies();
@@ -115,6 +119,60 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
           if (!dbUser) {
             dbUser = await userRepo.findByEmail(user.email);
           }
+
+          // If user exists in Supabase but not yet in local repo, auto-sync from Supabase profiles
+          if (!dbUser) {
+            try {
+              const adminClient = createAdminClient();
+              if (adminClient) {
+                const { data: prof } = await adminClient
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', user.id)
+                  .single();
+
+                const userName = prof?.name || user.user_metadata?.name || user.email.split('@')[0];
+                const userRole = (prof?.role as UserRole) || (user.user_metadata?.role as UserRole) || 'owner';
+                const userOrgId = prof?.current_org_id || undefined;
+
+                dbUser = await userRepo.create({
+                  id: user.id,
+                  name: userName,
+                  email: user.email.toLowerCase(),
+                  role: userRole,
+                  status: 'active',
+                  currentOrgId: userOrgId,
+                  lastActiveAt: new Date().toISOString(),
+                });
+
+                if (userOrgId) {
+                  const existingOrg = await orgRepo.findById(userOrgId);
+                  if (!existingOrg) {
+                    const { data: orgRow } = await adminClient
+                      .from('organizations')
+                      .select('*')
+                      .eq('id', userOrgId)
+                      .single();
+
+                    await orgRepo.create(
+                      {
+                        id: userOrgId,
+                        name: orgRow?.name || user.user_metadata?.companyName || 'My Export Company',
+                        businessType: orgRow?.business_type || 'Manufacturer & Exporter',
+                        country: orgRow?.country || user.user_metadata?.country || 'India',
+                        ownerId: user.id,
+                      },
+                      user.email,
+                      userName
+                    );
+                  }
+                }
+              }
+            } catch (syncErr: any) {
+              console.warn('[AUTH] Supabase user sync warning:', syncErr.message);
+            }
+          }
+
           if (dbUser) {
             session = {
               userId: dbUser.id,
@@ -148,9 +206,32 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
 
   if (targetOrgId) {
     organization = await orgRepo.findById(targetOrgId);
+    if (!organization) {
+      // Check Supabase organizations table
+      try {
+        const adminClient = createAdminClient();
+        if (adminClient) {
+          const { data: orgRow } = await adminClient.from('organizations').select('*').eq('id', targetOrgId).single();
+          if (orgRow) {
+            const res = await orgRepo.create(
+              {
+                id: orgRow.id,
+                name: orgRow.name,
+                businessType: orgRow.business_type || 'Manufacturer & Exporter',
+                country: orgRow.country || 'India',
+                ownerId: orgRow.owner_id || user.id,
+              },
+              user.email,
+              user.name
+            );
+            organization = res.organization;
+          }
+        }
+      } catch {}
+    }
+
     if (organization) {
       if (isSuperAdmin) {
-        // Super admin has global view access
         member = {
           id: 'admin_override',
           organizationId: organization.id,
@@ -163,9 +244,18 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
         };
       } else {
         member = await orgRepo.getMember(organization.id, user.id);
-        if (!member) {
-          // User is not a member of this org, revoke org access
-          organization = null;
+        if (!member && organization.ownerId === user.id) {
+          // User is owner of the organization
+          member = {
+            id: `mem_owner_${user.id}`,
+            organizationId: organization.id,
+            userId: user.id,
+            role: 'owner',
+            userEmail: user.email,
+            userName: user.name,
+            status: 'active',
+            joinedAt: organization.createdAt,
+          };
         }
       }
     }
@@ -177,7 +267,47 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
     if (userOrgs.length > 0) {
       organization = userOrgs[0];
       member = await orgRepo.getMember(organization.id, user.id);
-      // Update session cookie with default org
+      if (!member && organization.ownerId === user.id) {
+        member = {
+          id: `mem_owner_${user.id}`,
+          organizationId: organization.id,
+          userId: user.id,
+          role: 'owner',
+          userEmail: user.email,
+          userName: user.name,
+          status: 'active',
+          joinedAt: organization.createdAt,
+        };
+      }
+    } else {
+      // Create a default organization for customer so they are never locked out of dashboard
+      try {
+        const newOrg = await orgRepo.create(
+          {
+            name: `${user.name}'s Exports`,
+            businessType: 'Manufacturer & Exporter',
+            country: 'India',
+            ownerId: user.id,
+          },
+          user.email,
+          user.name
+        );
+        organization = newOrg.organization;
+        member = {
+          id: `mem_owner_${user.id}`,
+          organizationId: organization.id,
+          userId: user.id,
+          role: 'owner',
+          userEmail: user.email,
+          userName: user.name,
+          status: 'active',
+          joinedAt: organization.createdAt,
+        };
+        await userRepo.update(user.id, { currentOrgId: organization.id });
+      } catch {}
+    }
+
+    if (organization) {
       await setSessionCookie({
         userId: user.id,
         email: user.email,

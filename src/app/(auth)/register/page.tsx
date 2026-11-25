@@ -80,8 +80,7 @@ export default function RegisterPage() {
         throw new Error(data.error || 'Failed to create account');
       }
 
-      router.push(data.redirectUrl || '/onboarding');
-      router.refresh();
+      window.location.href = data.redirectUrl || '/dashboard';
     } catch (err: any) {
       setError(err.message || 'An error occurred during registration');
     } finally {
