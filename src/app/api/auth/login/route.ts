@@ -251,10 +251,19 @@ export async function POST(req: NextRequest) {
 
     const token = createSessionToken(sessionData);
 
+    const userOrg = orgId ? await orgRepo.findById(orgId) : null;
+    const isChaOrg =
+      userOrg?.orgType === 'cha' ||
+      userOrg?.businessType?.toLowerCase().includes('customs') ||
+      userOrg?.businessType?.toLowerCase().includes('cha') ||
+      userOrg?.name?.toLowerCase().includes('custom');
+
+    const redirectUrl = isChaOrg ? '/cha/dashboard' : '/dashboard';
+
     const response = NextResponse.json({
       success: true,
       message: 'Login successful',
-      redirectUrl: '/dashboard',
+      redirectUrl,
       isSuperAdmin: false,
     });
 

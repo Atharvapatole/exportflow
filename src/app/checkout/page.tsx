@@ -47,23 +47,24 @@ function CheckoutContent() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   // Determine selected item
-  const selectedSub = planId ? PRICING_CATALOG.subscriptions.find((s) => s.id === planId) : null;
+  const allPlans = [...PRICING_CATALOG.exporterPlans, ...PRICING_CATALOG.chaPlans];
+  const selectedSub = planId ? allPlans.find((s) => s.id === planId) : null;
   const selectedPack = packId ? PRICING_CATALOG.creditPacks.find((p) => p.id === packId) : null;
 
-  // Default to growth if neither specified
-  const effectiveSub = !selectedSub && !selectedPack ? PRICING_CATALOG.subscriptions.find((s) => s.id === 'growth') : selectedSub;
+  // Default to professional if neither specified
+  const effectiveSub = !selectedSub && !selectedPack ? PRICING_CATALOG.exporterPlans.find((s) => s.id === 'professional') : selectedSub;
   const itemType = selectedPack ? 'credit_pack' : 'subscription';
-  const itemId = selectedPack ? selectedPack.id : (effectiveSub?.id || 'growth');
+  const itemId = selectedPack ? selectedPack.id : (effectiveSub?.id || 'professional');
 
   const itemName = selectedPack
     ? selectedPack.name
-    : `${effectiveSub?.name || 'Growth'} Plan (${interval === 'annual' ? 'Annual' : 'Monthly'})`;
+    : `${effectiveSub?.name || 'Professional'} Plan (${interval === 'annual' ? 'Annual' : 'Monthly'})`;
 
   const itemPrice = selectedPack
     ? selectedPack.priceInr
     : interval === 'annual'
-    ? effectiveSub?.annualPriceInr || 9990
-    : effectiveSub?.monthlyPriceInr || 999;
+    ? effectiveSub?.annualPriceInr || 5990
+    : effectiveSub?.monthlyPriceInr || 599;
 
   // Fetch current user context
   useEffect(() => {
@@ -235,7 +236,7 @@ function CheckoutContent() {
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   {selectedPack
-                    ? selectedPack.description
+                    ? `${selectedPack.name} with 12 months validity and instant document credits.`
                     : `Full document workflow suite with ${interval} billing.`}
                 </p>
               </div>
@@ -270,7 +271,7 @@ function CheckoutContent() {
                 </>
               ) : (
                 <>
-                  {effectiveSub?.features.map((feat, idx) => (
+                  {(effectiveSub as any)?.features?.map((feat: string, idx: number) => (
                     <li key={idx} className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                       <span>{feat}</span>

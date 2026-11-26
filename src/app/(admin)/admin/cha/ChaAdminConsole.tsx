@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Organization } from '@/types';
+import { AdminPlanModal } from '@/components/admin/AdminPlanModal';
 
 interface ChaAdminConsoleProps {
   initialOrgs: Organization[];
@@ -22,6 +23,7 @@ interface ChaAdminConsoleProps {
 export function ChaAdminConsole({ initialOrgs }: ChaAdminConsoleProps) {
   const [orgs, setOrgs] = useState<Organization[]>(initialOrgs);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [selectedOrgForPlan, setSelectedOrgForPlan] = useState<Organization | null>(null);
 
   const handleUpdateStatus = async (orgId: string, newStatus: string) => {
     setIsUpdating(orgId);
@@ -116,6 +118,14 @@ export function ChaAdminConsole({ initialOrgs }: ChaAdminConsoleProps) {
 
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedOrgForPlan(org)}
+                            className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-[11px] h-7 px-2.5"
+                          >
+                            Manage Plan
+                          </Button>
                           {!isVerified ? (
                             <Button
                               size="sm"
@@ -147,6 +157,20 @@ export function ChaAdminConsole({ initialOrgs }: ChaAdminConsoleProps) {
           </div>
         )}
       </div>
+
+      {selectedOrgForPlan && (
+        <AdminPlanModal
+          organizationId={selectedOrgForPlan.id}
+          organizationName={selectedOrgForPlan.name}
+          currentPlanId="cha_professional"
+          currentStatus="active"
+          isOpen={!!selectedOrgForPlan}
+          onClose={() => setSelectedOrgForPlan(null)}
+          onSuccess={() => {
+            // refreshed
+          }}
+        />
+      )}
     </div>
   );
 }

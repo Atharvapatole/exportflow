@@ -687,6 +687,7 @@ export interface DocumentAllowance {
   proformaInvoices: number;
   commercialInvoices: number;
   packingLists: number;
+  aiMessages?: number;
 }
 
 export interface OrganizationWallet {
@@ -701,7 +702,19 @@ export interface OrganizationWallet {
 export interface OrganizationSubscription {
   id: string;
   organizationId: string;
-  planId: 'free' | 'starter' | 'growth' | 'business';
+  planId:
+    | 'free'
+    | 'free_trial'
+    | 'starter'
+    | 'professional'
+    | 'business'
+    | 'growth'
+    | 'cha_free_trial'
+    | 'cha_starter'
+    | 'cha_professional'
+    | 'cha_enterprise'
+    | 'cha_custom'
+    | string;
   status: 'active' | 'trial' | 'expired' | 'cancelled';
   billingCycle?: 'monthly' | 'annual';
   trialStartDate?: string;
@@ -709,7 +722,19 @@ export interface OrganizationSubscription {
   hasUsedTrial: boolean;
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
+  cancelledAt?: string;
+  customLimits?: {
+    maxClients?: number;
+    quotations?: number;
+    proformaInvoices?: number;
+    aiMessages?: number;
+    teamMembers?: number;
+    hasWhiteLabel?: boolean;
+    hasApiAccess?: boolean;
+    customPriceInr?: number;
+  };
   razorpaySubscriptionId?: string;
+  createdAt: string;
   updatedAt: string;
 }
 

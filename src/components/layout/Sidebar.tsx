@@ -16,6 +16,7 @@ import {
   BarChart3,
   UserCheck,
   Settings,
+  Code2,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -37,6 +38,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   BarChart3,
   UserCheck,
   Settings,
+  Code2,
 };
 
 interface SidebarProps {

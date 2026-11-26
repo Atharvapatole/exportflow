@@ -63,3 +63,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const ctx = await getCurrentContext();
+    if (!ctx || !ctx.organization?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const keyId = searchParams.get('id');
+    if (!keyId) {
+      return NextResponse.json({ error: 'Key ID required' }, { status: 400 });
+    }
+
+    const keys = await apiKeyRepo.listByOrg(ctx.organization.id);
+    const key = keys.find((k) => k.id === keyId);
+    if (!key) {
+      return NextResponse.json({ error: 'API key not found' }, { status: 404 });
+    }
+
+    await apiKeyRepo.revokeKey(keyId);
+
+    await adminRepo.logActivity({
+      userId: ctx.user.id,
+      userName: ctx.user.name,
+      organizationId: ctx.organization.id,
+      action: 'API_KEY_REVOKED',
+      entity: 'API_KEY',
+      entityId: keyId,
+      details: `Revoked API key: ${key.name} (${key.keyPrefix})`,
+    });
+
+    return NextResponse.json({ success: true, message: 'API key revoked' });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

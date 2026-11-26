@@ -154,13 +154,24 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
                       .eq('id', userOrgId)
                       .single();
 
+                    const isCha =
+                      orgRow?.org_type === 'cha' ||
+                      orgRow?.business_type?.toLowerCase().includes('customs') ||
+                      orgRow?.business_type?.toLowerCase().includes('cha') ||
+                      orgRow?.name?.toLowerCase().includes('custom') ||
+                      user.user_metadata?.userType === 'cha';
+
                     await orgRepo.create(
                       {
                         id: userOrgId,
-                        name: orgRow?.name || user.user_metadata?.companyName || 'My Export Company',
-                        businessType: orgRow?.business_type || 'Manufacturer & Exporter',
+                        name: orgRow?.name || user.user_metadata?.firmName || user.user_metadata?.companyName || 'My Export Company',
+                        businessType: orgRow?.business_type || (isCha ? 'Customs House Agent (CHA)' : 'Manufacturer & Exporter'),
                         country: orgRow?.country || user.user_metadata?.country || 'India',
                         ownerId: user.id,
+                        orgType: orgRow?.org_type || (isCha ? 'cha' : 'exporter'),
+                        chaLicenseNumber: orgRow?.cha_license_number || user.user_metadata?.licenseNumber,
+                        chaLicenseAuthority: orgRow?.cha_license_authority || user.user_metadata?.customsAuthority,
+                        chaLicenseStatus: orgRow?.cha_license_status || (isCha ? 'unverified' : undefined),
                       },
                       user.email,
                       userName
@@ -213,13 +224,23 @@ export async function getCurrentContext(): Promise<CurrentUserContext | null> {
         if (adminClient) {
           const { data: orgRow } = await adminClient.from('organizations').select('*').eq('id', targetOrgId).single();
           if (orgRow) {
+            const isCha =
+              orgRow.org_type === 'cha' ||
+              orgRow.business_type?.toLowerCase().includes('customs') ||
+              orgRow.business_type?.toLowerCase().includes('cha') ||
+              orgRow.name?.toLowerCase().includes('custom');
+
             const res = await orgRepo.create(
               {
                 id: orgRow.id,
                 name: orgRow.name,
-                businessType: orgRow.business_type || 'Manufacturer & Exporter',
+                businessType: orgRow.business_type || (isCha ? 'Customs House Agent (CHA)' : 'Manufacturer & Exporter'),
                 country: orgRow.country || 'India',
                 ownerId: orgRow.owner_id || user.id,
+                orgType: orgRow.org_type || (isCha ? 'cha' : 'exporter'),
+                chaLicenseNumber: orgRow.cha_license_number,
+                chaLicenseAuthority: orgRow.cha_license_authority,
+                chaLicenseStatus: orgRow.cha_license_status || (isCha ? 'unverified' : undefined),
               },
               user.email,
               user.name

@@ -171,7 +171,18 @@ export const orgRepo = {
   async findById(id: string): Promise<Organization | null> {
     const db = readDb();
     const local = db.organizations.find((o) => o.id === id);
-    if (local) return local;
+    if (local) {
+      if (
+        !local.orgType &&
+        (local.name?.toLowerCase().includes('custom') ||
+          local.businessType?.toLowerCase().includes('customs') ||
+          local.businessType?.toLowerCase().includes('cha'))
+      ) {
+        local.orgType = 'cha';
+        writeDb(db);
+      }
+      return local;
+    }
 
     // Check Supabase public.organizations
     try {
@@ -179,13 +190,25 @@ export const orgRepo = {
       if (adminClient) {
         const { data: orgRow } = await adminClient.from('organizations').select('*').eq('id', id).single();
         if (orgRow) {
+          const isCha =
+            orgRow.org_type === 'cha' ||
+            orgRow.business_type?.toLowerCase().includes('customs') ||
+            orgRow.business_type?.toLowerCase().includes('cha') ||
+            orgRow.name?.toLowerCase().includes('custom');
+
           const org: Organization = {
             id: orgRow.id,
             name: orgRow.name,
             slug: orgRow.slug || orgRow.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
             ownerId: orgRow.owner_id,
             country: orgRow.country || 'India',
-            businessType: orgRow.business_type || 'Manufacturer & Exporter',
+            businessType: orgRow.business_type || (isCha ? 'Customs House Agent (CHA)' : 'Manufacturer & Exporter'),
+            orgType: orgRow.org_type || (isCha ? 'cha' : 'exporter'),
+            chaLicenseNumber: orgRow.cha_license_number,
+            chaLicenseAuthority: orgRow.cha_license_authority,
+            chaLicenseStatus: orgRow.cha_license_status || (isCha ? 'unverified' : undefined),
+            address: orgRow.address,
+            phone: orgRow.phone,
             createdAt: orgRow.created_at || new Date().toISOString(),
             updatedAt: orgRow.updated_at || new Date().toISOString(),
           };
@@ -278,16 +301,30 @@ export const orgRepo = {
       if (adminClient) {
         const { data: ownedOrgs } = await adminClient.from('organizations').select('*').eq('owner_id', userId);
         if (ownedOrgs && ownedOrgs.length > 0) {
-          const orgs: Organization[] = ownedOrgs.map((orgRow) => ({
-            id: orgRow.id,
-            name: orgRow.name,
-            slug: orgRow.slug || orgRow.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-            ownerId: orgRow.owner_id,
-            country: orgRow.country || 'India',
-            businessType: orgRow.business_type || 'Manufacturer & Exporter',
-            createdAt: orgRow.created_at || new Date().toISOString(),
-            updatedAt: orgRow.updated_at || new Date().toISOString(),
-          }));
+          const orgs: Organization[] = ownedOrgs.map((orgRow) => {
+            const isCha =
+              orgRow.org_type === 'cha' ||
+              orgRow.business_type?.toLowerCase().includes('customs') ||
+              orgRow.business_type?.toLowerCase().includes('cha') ||
+              orgRow.name?.toLowerCase().includes('custom');
+
+            return {
+              id: orgRow.id,
+              name: orgRow.name,
+              slug: orgRow.slug || orgRow.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+              ownerId: orgRow.owner_id,
+              country: orgRow.country || 'India',
+              businessType: orgRow.business_type || (isCha ? 'Customs House Agent (CHA)' : 'Manufacturer & Exporter'),
+              orgType: orgRow.org_type || (isCha ? 'cha' : 'exporter'),
+              chaLicenseNumber: orgRow.cha_license_number,
+              chaLicenseAuthority: orgRow.cha_license_authority,
+              chaLicenseStatus: orgRow.cha_license_status || (isCha ? 'unverified' : undefined),
+              address: orgRow.address,
+              phone: orgRow.phone,
+              createdAt: orgRow.created_at || new Date().toISOString(),
+              updatedAt: orgRow.updated_at || new Date().toISOString(),
+            };
+          });
           for (const o of orgs) {
             if (!db.organizations.some((x) => x.id === o.id)) db.organizations.push(o);
           }
@@ -1362,24 +1399,27 @@ export const walletRepo = {
       wallet = {
         id: `wlt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         organizationId,
-        // Free initial allowance: 1 quotation
+        // Free initial allowance: 1 quotation + 10 free AI messages
         lifetimeCredits: {
           quotations: 1,
           proformaInvoices: 0,
           commercialInvoices: 0,
           packingLists: 0,
+          aiMessages: 10,
         },
         subscriptionCredits: {
           quotations: 0,
           proformaInvoices: 0,
           commercialInvoices: 0,
           packingLists: 0,
+          aiMessages: 0,
         },
         usedCounts: {
           quotations: 0,
           proformaInvoices: 0,
           commercialInvoices: 0,
           packingLists: 0,
+          aiMessages: 0,
         },
         updatedAt: new Date().toISOString(),
       };
@@ -1404,11 +1444,54 @@ export const walletRepo = {
     if (credits.proformaInvoices) targetCredits.proformaInvoices += credits.proformaInvoices;
     if (credits.commercialInvoices) targetCredits.commercialInvoices += credits.commercialInvoices;
     if (credits.packingLists) targetCredits.packingLists += credits.packingLists;
+    if (credits.aiMessages) {
+      targetCredits.aiMessages = (targetCredits.aiMessages || 0) + credits.aiMessages;
+    }
 
     wallet.updatedAt = new Date().toISOString();
     db.organizationWallets[index] = wallet;
     writeDb(db);
     return wallet;
+  },
+
+  async hasAiCredit(organizationId: string): Promise<boolean> {
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const life = wallet.lifetimeCredits.aiMessages || 0;
+    const sub = wallet.subscriptionCredits.aiMessages || 0;
+    return life + sub > 0;
+  },
+
+  async getAiCreditBalance(organizationId: string): Promise<{ aiMessages: number; balanceCredits: number; canUseAi: boolean }> {
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const life = wallet.lifetimeCredits.aiMessages || 0;
+    const sub = wallet.subscriptionCredits.aiMessages || 0;
+    const total = Math.max(0, life + sub);
+    return {
+      aiMessages: sub,
+      balanceCredits: life,
+      canUseAi: total > 0,
+    };
+  },
+
+  async useAiCredit(organizationId: string): Promise<boolean> {
+    const db = readDb();
+    const wallet = await this.getOrCreateWallet(organizationId);
+    const index = db.organizationWallets.findIndex((w) => w.organizationId === organizationId);
+
+    if ((wallet.subscriptionCredits.aiMessages || 0) > 0) {
+      wallet.subscriptionCredits.aiMessages = (wallet.subscriptionCredits.aiMessages || 0) - 1;
+      wallet.usedCounts.aiMessages = (wallet.usedCounts.aiMessages || 0) + 1;
+    } else if ((wallet.lifetimeCredits.aiMessages || 0) > 0) {
+      wallet.lifetimeCredits.aiMessages = (wallet.lifetimeCredits.aiMessages || 0) - 1;
+      wallet.usedCounts.aiMessages = (wallet.usedCounts.aiMessages || 0) + 1;
+    } else {
+      return false;
+    }
+
+    wallet.updatedAt = new Date().toISOString();
+    db.organizationWallets[index] = wallet;
+    writeDb(db);
+    return true;
   },
 
   async hasAvailableCredit(
@@ -1448,21 +1531,28 @@ export const walletRepo = {
 
 // ================= SUBSCRIPTION & TRIAL REPOSITORY =================
 export const subscriptionRepo = {
+  async findByOrg(organizationId: string): Promise<OrganizationSubscription | null> {
+    return this.getOrCreateSubscription(organizationId);
+  },
+
   async getOrCreateSubscription(organizationId: string): Promise<OrganizationSubscription> {
     const db = readDb();
     if (!db.organizationSubscriptions) db.organizationSubscriptions = [];
     let sub = db.organizationSubscriptions.find((s) => s.organizationId === organizationId);
     if (!sub) {
-      sub = {
+      const now = new Date().toISOString();
+      const newSub: OrganizationSubscription = {
         id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         organizationId,
         planId: 'free',
         status: 'active',
         hasUsedTrial: false,
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
-      db.organizationSubscriptions.push(sub);
+      db.organizationSubscriptions.push(newSub);
       writeDb(db);
+      return newSub;
     }
 
     // Check if trial has expired and auto-revert to free
@@ -1472,8 +1562,10 @@ export const subscriptionRepo = {
         sub.planId = 'free';
         sub.updatedAt = new Date().toISOString();
         const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
-        db.organizationSubscriptions[index] = sub;
-        writeDb(db);
+        if (index !== -1) {
+          db.organizationSubscriptions[index] = sub;
+          writeDb(db);
+        }
       }
     }
 
@@ -1485,36 +1577,106 @@ export const subscriptionRepo = {
     const sub = await this.getOrCreateSubscription(organizationId);
 
     if (sub.hasUsedTrial) {
-      return { success: false, message: 'Your organization has already redeemed the 3-day Growth trial.' };
+      return { success: false, message: 'Your organization has already redeemed the 3-day Free Trial.' };
     }
+
+    const org = await orgRepo.findById(organizationId);
+    const isCha =
+      org?.orgType === 'cha' ||
+      org?.businessType?.toLowerCase().includes('customs') ||
+      org?.businessType?.toLowerCase().includes('cha') ||
+      org?.name?.toLowerCase().includes('custom');
 
     const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Exactly 3 days
 
-    sub.planId = 'growth';
+    sub.planId = isCha ? 'cha_professional' : 'professional';
     sub.status = 'trial';
     sub.trialStartDate = now.toISOString();
     sub.trialEndDate = trialEnd.toISOString();
     sub.hasUsedTrial = true;
     sub.updatedAt = now.toISOString();
 
+    if (index >= 0) {
+      db.organizationSubscriptions[index] = sub;
+    } else {
+      db.organizationSubscriptions.push(sub);
+    }
+    writeDb(db);
+
+    // Grant credits for the trial period
+    if (isCha) {
+      await walletRepo.addCredits(
+        organizationId,
+        {
+          quotations: 200,
+          proformaInvoices: 150,
+          commercialInvoices: 150,
+          packingLists: 150,
+          aiMessages: 500,
+        },
+        'subscription'
+      );
+    } else {
+      await walletRepo.addCredits(
+        organizationId,
+        {
+          quotations: 50,
+          proformaInvoices: 30,
+          commercialInvoices: 30,
+          packingLists: 30,
+          aiMessages: 200,
+        },
+        'subscription'
+      );
+    }
+
+    return {
+      success: true,
+      subscription: sub,
+      message: isCha
+        ? '3-Day CHA Professional Trial activated successfully!'
+        : '3-Day Professional Trial activated successfully!',
+    };
+  },
+
+  async updateSubscriptionByAdmin(
+    organizationId: string,
+    updates: {
+      planId: string;
+      status?: 'active' | 'trial' | 'expired' | 'cancelled';
+      billingCycle?: 'monthly' | 'annual';
+      customLimits?: any;
+      grantCredits?: Partial<DocumentAllowance>;
+      extendTrialDays?: number;
+    }
+  ): Promise<OrganizationSubscription> {
+    const db = readDb();
+    const sub = await this.getOrCreateSubscription(organizationId);
+    const index = db.organizationSubscriptions.findIndex((s) => s.organizationId === organizationId);
+    const now = new Date();
+
+    sub.planId = updates.planId as any;
+    if (updates.status) sub.status = updates.status;
+    if (updates.billingCycle) sub.billingCycle = updates.billingCycle;
+    if (updates.customLimits) sub.customLimits = updates.customLimits;
+
+    if (updates.extendTrialDays && updates.extendTrialDays > 0) {
+      const baseDate = sub.trialEndDate && new Date(sub.trialEndDate) > now ? new Date(sub.trialEndDate) : now;
+      sub.trialEndDate = new Date(baseDate.getTime() + updates.extendTrialDays * 24 * 60 * 60 * 1000).toISOString();
+      sub.status = 'trial';
+    }
+
+    sub.updatedAt = now.toISOString();
     db.organizationSubscriptions[index] = sub;
     writeDb(db);
 
-    // Also grant Growth plan subscription credits for the trial period
-    await walletRepo.addCredits(
-      organizationId,
-      {
-        quotations: 30,
-        proformaInvoices: 20,
-        commercialInvoices: 20,
-        packingLists: 20,
-      },
-      'subscription'
-    );
+    if (updates.grantCredits) {
+      await walletRepo.addCredits(organizationId, updates.grantCredits, 'subscription');
+    }
 
-    return { success: true, subscription: sub, message: '3-Day Growth Trial activated successfully.' };
+    return sub;
   },
 
   async getTrialStatus(organizationId: string): Promise<{

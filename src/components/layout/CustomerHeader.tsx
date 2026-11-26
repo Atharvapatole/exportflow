@@ -64,6 +64,15 @@ export function CustomerHeader({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3">
+        <Link href="/cha/dashboard">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 gap-1.5 h-8 px-2.5 font-bold"
+          >
+            <span>⚓ CHA Workspace</span>
+          </Button>
+        </Link>
         <ThemeToggle />
 
         {/* Quick Actions Dropdown */}

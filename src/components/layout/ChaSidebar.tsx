@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Anchor,
   Sparkles,
+  Code2,
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { cn } from '@/lib/utils';
@@ -60,8 +61,10 @@ const CHA_NAVIGATION = [
   { name: 'Customs Checklists', href: '/cha/dashboard/checklists', icon: CheckSquare },
   { name: 'e-SANCHIT Register', href: '/cha/dashboard/esanchit', icon: UploadCloud },
   { name: 'Customs Queries', href: '/cha/dashboard/queries', icon: HelpCircle },
+  { name: 'AI Customs Assistant', href: '/cha/dashboard/ai-assistant', icon: Sparkles },
   { name: 'Financials & Invoicing', href: '/cha/dashboard/finances', icon: CreditCard },
   { name: 'Email Workflows', href: '/cha/dashboard/emails', icon: Mail },
+  { name: 'Developer API', href: '/cha/dashboard/api', icon: Code2 },
   { name: 'Team & RBAC', href: '/cha/dashboard/team', icon: Users },
   { name: 'Signatures & Stamps', href: '/cha/dashboard/signatures', icon: PenTool },
   { name: 'Audit Logs', href: '/cha/dashboard/audit', icon: History },

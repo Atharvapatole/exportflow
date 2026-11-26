@@ -16,6 +16,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 interface ChaHeaderProps {
   userName?: string;
@@ -79,6 +80,19 @@ export function ChaHeader({
             <span>Add Client</span>
           </Button>
         </Link>
+
+        <Link href="/dashboard">
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs px-2.5 py-1.5 h-8 flex items-center gap-1.5"
+            title="Switch to Exporter Workspace"
+          >
+            <span>🚢 Exporter Workspace</span>
+          </Button>
+        </Link>
+
+        <ThemeToggle className="text-slate-400 hover:text-white hover:bg-slate-800" />
 
         {/* Notifications */}
         <button

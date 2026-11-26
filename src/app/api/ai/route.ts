@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentContext } from '@/lib/auth';
-import { orgRepo, productRepo, buyerRepo, documentRepo } from '@/lib/db';
+import { orgRepo, productRepo, buyerRepo, documentRepo, walletRepo } from '@/lib/db';
 import { runAiCompletion } from '@/lib/ai/aiService';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const userPrompt = body.prompt;
     if (!userPrompt) return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+
+    // Strict AI Message Limit Check (1 credit per AI prompt / message)
+    const aiBalance = await walletRepo.getAiCreditBalance(ctx.organization.id);
+    if (!aiBalance.canUseAi) {
+      return NextResponse.json(
+        {
+          error: 'AI_LIMIT_REACHED',
+          message: 'You have exhausted your available AI Assistant messages for this billing period. Please upgrade your plan or purchase an AI Credit Pack to continue.',
+          remainingCredits: 0,
+        },
+        { status: 403 }
+      );
+    }
 
     // Tenant-isolated context
     const [profile, products, buyers, recentDocs] = await Promise.all([
@@ -55,10 +68,15 @@ RULES:
         }
       );
 
+      // Deduct 1 AI credit upon successful inference
+      await walletRepo.useAiCredit(ctx.organization.id);
+      const updatedBalance = await walletRepo.getAiCreditBalance(ctx.organization.id);
+
       return NextResponse.json({
         reply: completion.text,
         model: completion.model,
         provider: completion.provider,
+        remainingCredits: updatedBalance.aiMessages + updatedBalance.balanceCredits,
       });
     } catch (aiErr: any) {
       console.warn('Unified AI completion fallback triggered:', aiErr.message);
@@ -75,7 +93,15 @@ RULES:
         simulatedReply = `ExportFlow Assistant Advisory:\n\nRegarding "${userPrompt}":\nFor international export transactions, ensure all commercial terms (payment milestones, Incoterm point of delivery, and currency fluctuation clause) are explicitly detailed in both your Quotation and Proforma Invoice before cargo dispatch.\n\n(Note: Configure your OpenRouter API key in Super Admin Settings > AI Engine to activate live multi-provider inference).`;
       }
 
-      return NextResponse.json({ reply: simulatedReply, fallback: true });
+      // Also deduct 1 AI credit for fallback response
+      await walletRepo.useAiCredit(ctx.organization.id);
+      const updatedBalance = await walletRepo.getAiCreditBalance(ctx.organization.id);
+
+      return NextResponse.json({
+        reply: simulatedReply,
+        fallback: true,
+        remainingCredits: updatedBalance.aiMessages + updatedBalance.balanceCredits,
+      });
     }
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

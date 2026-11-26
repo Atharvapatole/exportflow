@@ -17,8 +17,14 @@ export default async function ChaDashboardLayout({
     redirect('/cha/login');
   }
 
+  const isCha =
+    ctx.organization?.orgType === 'cha' ||
+    ctx.organization?.businessType?.toLowerCase().includes('customs') ||
+    ctx.organization?.businessType?.toLowerCase().includes('cha') ||
+    ctx.organization?.name?.toLowerCase().includes('custom');
+
   // If a standard exporter account lands here, redirect them to exporter dashboard
-  if (ctx.organization?.orgType !== 'cha' && !ctx.isSuperAdmin) {
+  if (!isCha && !ctx.isSuperAdmin) {
     redirect('/dashboard');
   }
 

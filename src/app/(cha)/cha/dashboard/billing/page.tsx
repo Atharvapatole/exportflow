@@ -1,196 +1,174 @@
 import React from 'react';
+import Link from 'next/link';
 import { getCurrentContext } from '@/lib/auth';
-import { Check, ShieldCheck, Zap, Sparkles, ArrowRight } from 'lucide-react';
+import { subscriptionRepo, walletRepo } from '@/lib/db';
+import { PRICING_CATALOG } from '@/config/constants';
+import { Check, ShieldCheck, Zap, Sparkles, ArrowRight, Building2, Layers, Key } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ChaBillingPage() {
   const ctx = await getCurrentContext();
+  const orgId = ctx?.organization?.id;
+  const [sub, wallet] = await Promise.all([
+    orgId ? subscriptionRepo.findByOrg(orgId) : null,
+    orgId ? walletRepo.getOrCreateWallet(orgId) : null,
+  ]);
+
+  const activePlanId = sub?.planId || 'free';
+  const isTrial = sub?.status === 'trial';
+
+  const totalQuotes = (wallet?.subscriptionCredits?.quotations ?? 0) + (wallet?.lifetimeCredits?.quotations ?? 0);
+  const totalPIs = (wallet?.subscriptionCredits?.proformaInvoices ?? 0) + (wallet?.lifetimeCredits?.proformaInvoices ?? 0);
+  const totalAi = (wallet?.subscriptionCredits?.aiMessages ?? 0) + (wallet?.lifetimeCredits?.aiMessages ?? 0);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
+      {/* Current Active Plan Status Banner */}
+      <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-md">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Current Subscription</span>
+            {isTrial && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+                3-Day Trial Active
+              </span>
+            )}
+          </div>
+          <h2 className="text-2xl font-bold text-white capitalize">
+            {sub?.planId?.replace(/_/g, ' ') || 'CHA Free Plan'}
+          </h2>
+          <p className="text-xs text-slate-400">
+            Billing status: <span className="font-semibold text-emerald-400 capitalize">{sub?.status || 'active'}</span>
+            {sub?.currentPeriodEnd && ` • Renews / expires: ${new Date(sub.currentPeriodEnd).toLocaleDateString()}`}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block">Quotation Credits</span>
+            <span className="text-base font-bold text-white font-mono">{totalQuotes}</span>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-center">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block">PI Credits</span>
+            <span className="text-base font-bold text-white font-mono">{totalPIs}</span>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-center col-span-2 sm:col-span-1">
+            <span className="text-[10px] text-slate-400 uppercase font-semibold block">AI Messages</span>
+            <span className="text-base font-bold text-emerald-400 font-mono">
+              {totalAi}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
           <Zap className="w-3.5 h-3.5" />
-          <span>Customs Brokerage Expansion Plans</span>
+          <span>Official CHA Agent Subscription Matrix</span>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">CHA Workspace Plans & Add-on Packs</h1>
+        <h1 className="text-3xl font-bold text-white tracking-tight">Customs House Agent Plans & Features</h1>
         <p className="text-xs text-slate-400 max-w-lg mx-auto">
-          Scale your clearance operations with multi-station job tracking, team collaboration, and automated white-label exporter portals
+          Specially designed for CHAs who manage multiple exporter clients, customs clearance jobs, and statutory documentation
         </p>
       </div>
 
       {/* Pricing Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Tier 1 */}
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-6">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-white">Starter Broker</h3>
-              <p className="text-xs text-slate-400 mt-1">For independent customs clearance agents</p>
+        {PRICING_CATALOG.chaPlans.slice(0, 3).map((plan) => {
+          const isCurrent = activePlanId === plan.id;
+          return (
+            <div
+              key={plan.id}
+              className={`p-6 rounded-2xl bg-slate-900 border flex flex-col justify-between space-y-6 ${
+                plan.popular
+                  ? 'border-2 border-amber-500 shadow-xl shadow-amber-500/10 relative'
+                  : 'border-slate-800'
+              }`}
+            >
+              {plan.popular && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-[10px] uppercase tracking-wider">
+                  Recommended for CHAs
+                </span>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-bold text-white">{plan.name}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{plan.tagline}</p>
+                </div>
+
+                <div>
+                  <span className="text-3xl font-bold text-white font-mono">
+                    ₹{((plan as any).monthlyPriceInr || 0).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-xs text-slate-400"> / month</span>
+                  <p className="text-[11px] text-emerald-400 font-medium mt-1">
+                    Annual: ₹{((plan as any).annualPriceInr || 0).toLocaleString('en-IN')}/yr (2 months free)
+                  </p>
+                </div>
+
+                <ul className="space-y-2 text-xs text-slate-300">
+                  {plan.features.map((feat, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{feat}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="space-y-2 pt-4">
+                <Link href={`/checkout?plan=${plan.id}&interval=monthly`} className="block">
+                  <Button className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-2.5">
+                    {isCurrent ? 'Current Plan (Renew / Extend)' : 'Choose Plan'}
+                  </Button>
+                </Link>
+                <Link href={`/checkout?plan=${plan.id}&interval=annual`} className="block">
+                  <Button variant="outline" className="w-full border-slate-700 text-slate-300 text-xs py-2 hover:bg-slate-800">
+                    Switch to Annual (Save ₹{((((plan as any).monthlyPriceInr || 0) * 12) - ((plan as any).annualPriceInr || 0)).toLocaleString('en-IN')})
+                  </Button>
+                </Link>
+              </div>
             </div>
-
-            <div>
-              <span className="text-3xl font-bold text-white font-mono">₹1,999</span>
-              <span className="text-xs text-slate-400"> / month</span>
-            </div>
-
-            <ul className="space-y-2.5 text-xs text-slate-300">
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Up to 25 Active Customs Jobs</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Single Customs Station Base</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>BoE & SB Calculation Worksheets</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>e-SANCHIT IRN Tracking</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Transparent Signature & Stamp Studio</span>
-              </li>
-            </ul>
-          </div>
-
-          <Button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs py-2.5">
-            Choose Starter Plan
-          </Button>
-        </div>
-
-        {/* Tier 2 (Highlighted) */}
-        <div className="p-6 rounded-2xl bg-slate-900 border-2 border-amber-500 relative flex flex-col justify-between space-y-6 shadow-2xl shadow-amber-500/10">
-          <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-[10px] uppercase tracking-wider">
-            Most Popular for CHAs
-          </span>
-
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-white">Professional Forwarder</h3>
-              <p className="text-xs text-slate-400 mt-1">For expanding customs brokerage firms</p>
-            </div>
-
-            <div>
-              <span className="text-3xl font-bold text-white font-mono">₹4,999</span>
-              <span className="text-xs text-slate-400"> / month</span>
-            </div>
-
-            <ul className="space-y-2.5 text-xs text-slate-300">
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span><strong>Unlimited</strong> Active Customs Jobs</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Multi-Port / ICD Station Coverage</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>5 Team Member Seats with RBAC</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>AI Cross-Document Discrepancy Checker</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Automated Exporter Email Workflows</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Priority Appraising Query Tracking</span>
-              </li>
-            </ul>
-          </div>
-
-          <Button className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs py-2.5 border-0">
-            Upgrade to Professional
-          </Button>
-        </div>
-
-        {/* Tier 3 */}
-        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-6">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-white">Enterprise Logistics</h3>
-              <p className="text-xs text-slate-400 mt-1">National freight forwarders & 3PL networks</p>
-            </div>
-
-            <div>
-              <span className="text-3xl font-bold text-white font-mono">₹9,999</span>
-              <span className="text-xs text-slate-400"> / month</span>
-            </div>
-
-            <ul className="space-y-2.5 text-xs text-slate-300">
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Everything in Professional Plan</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Full White-Label Exporter Client Portal</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Custom Domain Mapping (portal.yourfirm.com)</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Developer REST API Access & Webhooks</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>20 Team Member Seats</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Dedicated Compliance Account Manager</span>
-              </li>
-            </ul>
-          </div>
-
-          <Button className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs py-2.5">
-            Contact Enterprise Sales
-          </Button>
-        </div>
+          );
+        })}
       </div>
 
-      {/* Add-on Packs */}
+      {/* CHA Custom Plan Box */}
+      <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-purple-500/10 text-purple-400 text-[11px] font-bold border border-purple-500/30">
+            <Building2 className="w-3.5 h-3.5" />
+            <span>High Volume Enterprise</span>
+          </div>
+          <h3 className="text-lg font-bold text-white">CHA Custom Plan — More Than 100 Exporter Clients</h3>
+          <p className="text-xs text-slate-400 max-w-xl">
+            Custom client limits, bespoke document quotas, custom API integration, white-label broker portal, and dedicated account manager.
+          </p>
+        </div>
+        <Link href="/contact?subject=CHA+Custom+Plan+Inquiry">
+          <Button className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shrink-0 gap-1.5">
+            Contact Enterprise Sales
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Button>
+        </Link>
+      </div>
+
+      {/* Add-ons table */}
       <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-          Operational Add-On Packs
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <span className="font-bold text-white block">+5 Team Member Seats</span>
-            <span className="font-mono text-amber-400 font-bold text-base">₹999 / mo</span>
-            <p className="text-[11px] text-slate-400">Add extra field executive and clerk logins</p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <span className="font-bold text-white block">AI Document Inspector Pack</span>
-            <span className="font-mono text-amber-400 font-bold text-base">₹1,499 / 500 checks</span>
-            <p className="text-[11px] text-slate-400">High-volume automated cross-document audit</p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <span className="font-bold text-white block">Custom White-Label Domain</span>
-            <span className="font-mono text-amber-400 font-bold text-base">₹2,499 / mo</span>
-            <p className="text-[11px] text-slate-400">Host client portal on your own domain with SSL</p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <span className="font-bold text-white block">Developer API Bundle</span>
-            <span className="font-mono text-amber-400 font-bold text-base">₹2,999 / mo</span>
-            <p className="text-[11px] text-slate-400">100,000 API requests/month with webhooks</p>
-          </div>
+        <h3 className="text-base font-bold text-white">CHA Add-on Features & Extra Capacity</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {PRICING_CATALOG.addons.map((add) => (
+            <div key={add.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+              <div>
+                <p className="font-semibold text-white">{add.name}</p>
+                <p className="text-[11px] text-slate-500 capitalize">{add.billing}</p>
+              </div>
+              <span className="font-bold text-amber-400 font-mono">₹{add.priceInr}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

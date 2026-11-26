@@ -52,8 +52,11 @@ export function TrialBanner() {
       const res = await fetch('/api/trial/activate', { method: 'POST' });
       const json = await res.json();
       if (res.ok) {
-        setMessage('3-Day Growth Trial activated successfully! Enjoy full access.');
+        setMessage('3-Day Free Trial activated successfully! Enjoy full access.');
         await fetchStatus();
+        setTimeout(() => {
+          window.location.reload();
+        }, 800);
       } else {
         setMessage(json.error || 'Failed to activate trial.');
       }
@@ -79,12 +82,12 @@ export function TrialBanner() {
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-xs font-bold backdrop-blur-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>ExportFlow 3-Day Growth Trial Active</span>
+              <span>ExportFlow 3-Day Free Trial Active</span>
             </div>
-            <h3 className="text-lg font-bold tracking-tight">Full Growth Tier Unlocked</h3>
+            <h3 className="text-lg font-bold tracking-tight">Full Professional Tier Unlocked</h3>
             <p className="text-xs text-blue-100 max-w-xl">
-              You have access to 30 Quotations, 20 PIs, 20 CIs, 20 Packing Lists & AI Assistant.
-              No payment is collected at expiry; your account seamlessly transitions to the Free plan.
+              You have access to 50 Quotations, 30 PIs, 200 AI Assistant Messages, AI Document Checking & Full CRM.
+              No payment is collected at expiry; choose a plan anytime to continue.
             </p>
           </div>
 
@@ -119,13 +122,13 @@ export function TrialBanner() {
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Special Exporter Offer</span>
+              <span>3-Day Free Trial Offer</span>
             </div>
             <h3 className="text-lg font-bold tracking-tight">
-              Start Your 3-Day Growth Free Trial
+              Start Your 3-Day Free Trial (₹0)
             </h3>
             <p className="text-xs text-slate-300 max-w-xl">
-              Unlock 30 Export Quotations, 20 Commercial Invoices, Packing Lists, AI Export Copilot, and full export calculators. No payment info or credit card required.
+              Try all Professional features free for 3 days: 50 Quotations, 30 Proforma Invoices, 200 AI Assistant messages, advanced templates, and AI document checking. No credit card required.
             </p>
             {message && (
               <p className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1">
