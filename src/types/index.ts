@@ -890,6 +890,41 @@ export interface CustomsJobDocument {
   updatedAt?: string;
 }
 
+export type ChaDocumentType =
+  | 'boe_worksheet'
+  | 'shipping_bill_checklist'
+  | 'gatt_declaration'
+  | 'cha_authorization'
+  | 'customs_query_reply'
+  | 'delivery_order_memo'
+  | 'cha_duty_debit_note'
+  | 'customs_kyc_form';
+
+export interface ChaDocument {
+  id: string;
+  chaOrgId: string;
+  clientId: string;
+  clientName: string;
+  clientIec?: string;
+  clientGstin?: string;
+  clientPan?: string;
+  jobId?: string;
+  jobNumber?: string;
+  type: ChaDocumentType;
+  documentTitle: string;
+  documentNumber: string;
+  date: string;
+  status: 'draft' | 'finalized' | 'submitted' | 'printed';
+  data: Record<string, any>;
+  totalAmount?: number;
+  currency?: string;
+  notes?: string;
+  signatureUrl?: string;
+  stampUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CustomsDocumentChecklist {
   id: string;
   jobId: string;

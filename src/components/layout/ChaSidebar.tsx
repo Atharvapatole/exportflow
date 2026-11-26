@@ -35,7 +35,7 @@ export interface ChaSidebarProps {
 
 const CHA_NAVIGATION = [
   { name: 'Overview', href: '/cha/dashboard', icon: LayoutDashboard },
-  { name: 'Clients (CRM)', href: '/cha/dashboard/clients', icon: Building2 },
+  { name: 'Customer Management', href: '/cha/dashboard/customers', icon: Building2 },
   {
     name: 'Customs Jobs',
     icon: Ship,
@@ -47,11 +47,12 @@ const CHA_NAVIGATION = [
     ],
   },
   {
-    name: 'Document Center',
+    name: 'Document Studio',
     icon: FileText,
     href: '/cha/dashboard/documents',
     children: [
-      { name: 'Worksheets & Docs', href: '/cha/dashboard/documents' },
+      { name: 'All Documents', href: '/cha/dashboard/documents' },
+      { name: '+ Create Document', href: '/cha/dashboard/documents/create' },
       { name: 'BoE / SB Worksheets', href: '/cha/dashboard/documents/worksheets' },
       { name: 'AI Document Checker', href: '/cha/dashboard/documents/ai-checker' },
     ],

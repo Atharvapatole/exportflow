@@ -8,6 +8,7 @@ import {
   signatureRepo,
   apiKeyRepo,
   teamRepo,
+  chaDocRepo,
 } from '../src/lib/db';
 import { encryptSecret, decryptSecret } from '../src/lib/crypto';
 
@@ -136,7 +137,37 @@ async function runTests() {
   }
   console.log('  ✓ Passed: API Key generation, SHA-256 hash lookup, and rate logging verified.\n');
 
-  console.log('🎉 ALL 6 COMPREHENSIVE INTEGRATION SUITES PASSED WITH 100% SUCCESS!');
+  console.log('Test 7: CHA Customs Documents Studio & Customer Tracking');
+  const docNumber = await chaDocRepo.getNextDocNumber(testOrgId, 'boe_worksheet');
+  const createdDoc = await chaDocRepo.create({
+    chaOrgId: testOrgId,
+    clientId: client.id,
+    clientName: client.companyName,
+    clientIec: client.iecNumber,
+    jobId: job.id,
+    jobNumber: job.jobNumber,
+    type: 'boe_worksheet',
+    documentTitle: 'Bill of Entry (BoE) Preparation Worksheet',
+    documentNumber: docNumber,
+    date: new Date().toISOString().split('T')[0],
+    status: 'finalized',
+    data: { assessableValue: 500000, totalDuty: 142500 },
+    totalAmount: 142500,
+    currency: 'INR',
+  });
+
+  const latestDoc = await chaDocRepo.getLatestForClient(client.id);
+  if (!latestDoc || latestDoc.id !== createdDoc.id) {
+    throw new Error('Latest document for customer lookup failed.');
+  }
+
+  const clientDocCount = await chaDocRepo.countForClient(client.id);
+  if (clientDocCount !== 1) {
+    throw new Error(`Expected 1 document for client, found ${clientDocCount}`);
+  }
+  console.log('  ✓ Passed: CHA document created, formatted number generated, and client tracking verified.\n');
+
+  console.log('🎉 ALL 7 COMPREHENSIVE INTEGRATION SUITES PASSED WITH 100% SUCCESS!');
 }
 
 runTests().catch((err) => {

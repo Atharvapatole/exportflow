@@ -22,6 +22,7 @@ import {
   CustomTemplate,
   OrganizationTeamMember,
   AiDocumentReview,
+  ChaDocument,
 } from '@/types';
 
 /**
@@ -73,6 +74,7 @@ export interface DatabaseState {
   customTemplates: CustomTemplate[];
   organizationTeamMembers: OrganizationTeamMember[];
   aiDocumentReviews: AiDocumentReview[];
+  chaDocuments: ChaDocument[];
 }
 
 const defaultState: DatabaseState = {
@@ -106,6 +108,7 @@ const defaultState: DatabaseState = {
   customTemplates: [],
   organizationTeamMembers: [],
   aiDocumentReviews: [],
+  chaDocuments: [],
   aiProviderConfig: {
     id: '00000000-0000-0000-0000-000000000001',
     isEnabled: true,
@@ -198,6 +201,7 @@ export function readDb(): DatabaseState {
     if (!parsed.customTemplates) parsed.customTemplates = [];
     if (!parsed.organizationTeamMembers) parsed.organizationTeamMembers = [];
     if (!parsed.aiDocumentReviews) parsed.aiDocumentReviews = [];
+    if (!parsed.chaDocuments) parsed.chaDocuments = [];
     return parsed;
   } catch (err) {
     console.error('Error reading db file, falling back to default:', err);

@@ -41,6 +41,8 @@ import {
   CustomTemplate,
   OrganizationTeamMember,
   AiDocumentReview,
+  ChaDocument,
+  ChaDocumentType,
 } from '@/types';
 import crypto from 'crypto';
 import { roundToTwo, safeAdd } from '@/lib/utils';
@@ -2827,5 +2829,93 @@ export const aiReviewRepo = {
     return (db.aiDocumentReviews || []).filter((r) => r.documentId === documentId);
   },
 };
+
+// ================= CHA DOCUMENT REPOSITORY =================
+export const chaDocRepo = {
+  async listByOrg(orgId: string, clientId?: string): Promise<ChaDocument[]> {
+    const db = readDb();
+    const list = (db.chaDocuments || []).filter((d) => d.chaOrgId === orgId);
+    if (clientId) {
+      return list.filter((d) => d.clientId === clientId);
+    }
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  async findById(id: string): Promise<ChaDocument | null> {
+    const db = readDb();
+    return (db.chaDocuments || []).find((d) => d.id === id) || null;
+  },
+
+  async getLatestForClient(clientId: string): Promise<ChaDocument | null> {
+    const db = readDb();
+    const docs = (db.chaDocuments || [])
+      .filter((d) => d.clientId === clientId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return docs[0] || null;
+  },
+
+  async countForClient(clientId: string): Promise<number> {
+    const db = readDb();
+    return (db.chaDocuments || []).filter((d) => d.clientId === clientId).length;
+  },
+
+  async getNextDocNumber(orgId: string, type: ChaDocumentType): Promise<string> {
+    const prefixMap: Record<ChaDocumentType, string> = {
+      boe_worksheet: 'BOE-WS',
+      shipping_bill_checklist: 'SB-CHK',
+      gatt_declaration: 'GATT-DEC',
+      cha_authorization: 'CHA-AUTH',
+      customs_query_reply: 'QR-REP',
+      delivery_order_memo: 'DO-MEMO',
+      cha_duty_debit_note: 'DN-DUTY',
+      customs_kyc_form: 'KYC-VER',
+    };
+    const prefix = prefixMap[type] || 'CHA-DOC';
+    const year = new Date().getFullYear();
+    const db = readDb();
+    const count = (db.chaDocuments || []).filter((d) => d.chaOrgId === orgId && d.type === type).length + 1;
+    return `${prefix}/${year}/${String(count).padStart(4, '0')}`;
+  },
+
+  async create(data: Omit<ChaDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<ChaDocument> {
+    const now = new Date().toISOString();
+    const doc: ChaDocument = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.chaDocuments) db.chaDocuments = [];
+    db.chaDocuments.unshift(doc);
+    writeDb(db);
+    return doc;
+  },
+
+  async update(id: string, updates: Partial<ChaDocument>): Promise<ChaDocument | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.chaDocuments) db.chaDocuments = [];
+    const index = db.chaDocuments.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+    db.chaDocuments[index] = {
+      ...db.chaDocuments[index],
+      ...updates,
+      updatedAt: now,
+    };
+    writeDb(db);
+    return db.chaDocuments[index];
+  },
+
+  async delete(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.chaDocuments) return false;
+    const initialLen = db.chaDocuments.length;
+    db.chaDocuments = db.chaDocuments.filter((d) => d.id !== id);
+    writeDb(db);
+    return db.chaDocuments.length < initialLen;
+  },
+};
+
 
 
