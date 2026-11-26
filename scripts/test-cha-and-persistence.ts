@@ -39,7 +39,7 @@ async function runTests() {
 
   // TEST 2: CHA Client Management (CRM)
   console.log('Test 2: CHA Client CRM & Tenant Isolation');
-  const testOrgId = 'test_cha_org_9988';
+  const testOrgId = `test_cha_org_${Date.now()}`;
   const client = await chaClientRepo.create({
     chaOrgId: testOrgId,
     companyName: 'Test Exporter Logistics Ltd',
@@ -53,7 +53,7 @@ async function runTests() {
     throw new Error('CHA client creation failed.');
   }
   const orgClients = await chaClientRepo.listByOrg(testOrgId);
-  if (orgClients.length === 0 || orgClients[0].id !== client.id) {
+  if (orgClients.length === 0 || !orgClients.some((c) => c.id === client.id)) {
     throw new Error('CHA client listing failed.');
   }
   console.log('  ✓ Passed: CHA Client created and isolated to brokerage organization.\n');

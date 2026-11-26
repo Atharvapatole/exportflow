@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Menu, X, ArrowRight, Sparkles } from 'lucide-react';
+import { Menu, X, ArrowRight, Sparkles, Ship } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -52,6 +52,16 @@ export function PublicHeader() {
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>Start 3-Day Free Trial</span>
               <ArrowRight className="w-3.5 h-3.5 ml-0.5" />
+            </Button>
+          </Link>
+          <Link href="/cha/login">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500 gap-1.5 font-bold shadow-xs transition-all"
+            >
+              <Ship className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>Login as CHA</span>
             </Button>
           </Link>
         </div>
@@ -125,6 +135,15 @@ export function PublicHeader() {
               <Button variant="secondary" className="w-full text-xs gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                 <span>Start 3-Day Free Trial</span>
+              </Button>
+            </Link>
+            <Link href="/cha/login" onClick={() => setMobileMenuOpen(false)}>
+              <Button
+                variant="outline"
+                className="w-full text-xs border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 gap-1.5 font-bold"
+              >
+                <Ship className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>Login as CHA (Customs Broker)</span>
               </Button>
             </Link>
           </div>

@@ -218,6 +218,13 @@ export default function RegisterPage() {
             Sign In here
           </Link>
         </p>
+
+        <p className="text-center text-xs text-slate-500 mt-2">
+          Are you a Customs Broker / Forwarder?{' '}
+          <Link href="/cha/register" className="text-amber-600 dark:text-amber-400 font-bold hover:underline">
+            Register as CHA
+          </Link>
+        </p>
       </div>
     </div>
   );
