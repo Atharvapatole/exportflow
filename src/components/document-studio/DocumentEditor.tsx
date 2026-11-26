@@ -55,6 +55,7 @@ export function DocumentEditor({ initialDoc, docType }: DocumentEditorProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [buyers, setBuyers] = useState<Buyer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
   const [companyProfile, setCompanyProfile] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -241,11 +242,28 @@ export function DocumentEditor({ initialDoc, docType }: DocumentEditorProps) {
   useEffect(() => {
     async function loadMeta() {
       try {
-        const [bRes, pRes, sRes] = await Promise.all([
+        const [bRes, pRes, sRes, sigRes] = await Promise.all([
           fetch('/api/buyers'),
           fetch('/api/products'),
           fetch('/api/settings'),
+          fetch('/api/signatures'),
         ]);
+
+        if (sigRes.ok) {
+          const sigData = await sigRes.json();
+          if (sigData.signatures) {
+            setAvailableSignatures(sigData.signatures);
+            if (!initialDoc?.authorizedSignatureUrl && sigData.signatures.length > 0) {
+              const active = sigData.signatures.find((s: any) => s.isActive) || sigData.signatures[0];
+              setDocData((prev: any) => ({
+                ...prev,
+                authorizedSignatureUrl: active.processedPngUrl,
+                authorizedSignatoryName: prev.authorizedSignatoryName || active.signatoryName,
+                signatoryDesignation: prev.signatoryDesignation || active.designation,
+              }));
+            }
+          }
+        }
 
         if (bRes.ok) {
           const bData = await bRes.json();
@@ -1594,6 +1612,49 @@ export function DocumentEditor({ initialDoc, docType }: DocumentEditorProps) {
                     onChange={(e) => setDocData({ ...docData, showBuyerAcceptance: e.target.checked })}
                     className="rounded text-blue-600 h-4 w-4"
                   />
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">Include Transparent Signature & Seal</span>
+                      <span className="text-[10px] text-slate-500">Prints your isolated signature/rubber stamp on the export document</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={docData.showSignature}
+                      onChange={(e) => setDocData({ ...docData, showSignature: e.target.checked })}
+                      className="rounded text-blue-600 h-4 w-4"
+                    />
+                  </div>
+
+                  {docData.showSignature && availableSignatures.length > 0 && (
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                        Select Signature Asset from Library
+                      </label>
+                      <select
+                        value={docData.authorizedSignatureUrl}
+                        onChange={(e) => {
+                          const chosen = availableSignatures.find((s: any) => s.processedPngUrl === e.target.value);
+                          setDocData({
+                            ...docData,
+                            authorizedSignatureUrl: e.target.value,
+                            authorizedSignatoryName: chosen?.signatoryName || docData.authorizedSignatoryName,
+                            signatoryDesignation: chosen?.designation || docData.signatoryDesignation,
+                          });
+                        }}
+                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                      >
+                        <option value="">-- Choose Signature from Studio --</option>
+                        {availableSignatures.map((s: any) => (
+                          <option key={s.id} value={s.processedPngUrl}>
+                            {s.signatoryName} ({s.designation}) - {s.assetType}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             )}

@@ -17,6 +17,11 @@ export default async function CustomerDashboardLayout({
     redirect('/login');
   }
 
+  // Redirect CHA accounts to dedicated CHA dashboard
+  if (ctx.organization?.orgType === 'cha' && !ctx.isSuperAdmin) {
+    redirect('/cha/dashboard');
+  }
+
   const companyName = ctx.organization?.name || 'My Export Company';
 
   return (

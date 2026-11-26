@@ -35,6 +35,17 @@ export interface Organization {
   country: string;
   businessType: string;
   logoUrl?: string;
+  orgType?: 'exporter' | 'cha';
+  chaLicenseNumber?: string;
+  chaLicenseAuthority?: string;
+  chaLicenseStatus?: 'unverified' | 'pending' | 'verified' | 'rejected';
+  authorizedPersonnel?: string;
+  stampUrl?: string;
+  signatureUrl?: string;
+  whitelabelConfig?: WhiteLabelConfig;
+  email?: string;
+  phone?: string;
+  address?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -723,3 +734,394 @@ export interface ContactInquiry {
 
 // ================= THEME TYPES =================
 export type ThemeMode = 'light' | 'dark' | 'system';
+
+// ================= WHITE LABEL & BRANDING TYPES =================
+export interface WhiteLabelConfig {
+  isEnabled: boolean;
+  brandName?: string;
+  brandLogoUrl?: string;
+  brandPrimaryColor?: string;
+  customDomain?: string;
+  customDomainVerified?: boolean;
+  hideExportFlowBadge?: boolean;
+  emailSenderName?: string;
+}
+
+// ================= CHA & CUSTOMS BROKER TYPES =================
+export interface ChaClient {
+  id: string;
+  chaOrgId: string;
+  clientOrgId?: string;
+  companyName: string;
+  businessType?: string;
+  clientType?: 'importer' | 'exporter' | 'both';
+  contactPerson: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+  iec?: string;
+  iecNumber?: string;
+  gstin?: string;
+  pan?: string;
+  billingInfo?: Record<string, any>;
+  creditTerms?: string;
+  kycStatus: 'pending' | 'verified' | 'rejected';
+  kycDocuments?: any[];
+  status?: 'active' | 'inactive';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CustomsJobType =
+  | 'import'
+  | 'export'
+  | 'import_clearance'
+  | 'export_clearance'
+  | 're_export'
+  | 'transshipment'
+  | 'other';
+
+export type CustomsJobStatus =
+  | 'draft'
+  | 'docs_received'
+  | 'under_scrutiny'
+  | 'checklist_approved'
+  | 'query_raised'
+  | 'assessment_done'
+  | 'duty_paid'
+  | 'ooc_granted'
+  | 'leo_granted'
+  | 'cargo_delivered'
+  | 'completed'
+  | 'cancelled'
+  | 'new'
+  | 'awaiting_docs'
+  | 'awaiting_documents'
+  | 'under_review'
+  | 'ready_for_filing'
+  | 'submitted_externally'
+  | 'customs_query_received'
+  | 'examination_pending'
+  | 'duty_payment_pending'
+  | 'customs_cleared'
+  | 'on_hold';
+
+export interface CustomsJob {
+  id: string;
+  jobNumber: string;
+  chaOrgId: string;
+  clientId: string;
+  clientName?: string;
+  jobType: CustomsJobType;
+  status: CustomsJobStatus;
+  customsStation?: string;
+  customsHouseCode?: string;
+  billOfEntryNumber?: string;
+  billOfEntryDate?: string;
+  shippingBillNumber?: string;
+  shippingBillDate?: string;
+  irnNumber?: string;
+  drnNumber?: string;
+  leoNumber?: string;
+  leoDate?: string;
+  oocNumber?: string;
+  oocDate?: string;
+  igmNumber?: string;
+  igmDate?: string;
+  blAwbNumber?: string;
+  blAwbDate?: string;
+  containerNumbers?: string[];
+  invoiceNumber?: string;
+  invoiceValue?: number;
+  currency?: string;
+  totalPackages?: number;
+  grossWeightKg?: number;
+  portOfLoading?: string;
+  portOfDischarge?: string;
+  countryOfOrigin?: string;
+  countryOfDestination?: string;
+  vesselFlightDetails?: string;
+  expectedDate?: string;
+  goodsDescription?: string;
+  hsCodes?: string[];
+  assignedTo?: string;
+  assignedEmployeeId?: string;
+  assignedEmployeeName?: string;
+  estimatedDutyInr?: number;
+  actualDutyPaidInr?: number;
+  chaChargesInr?: number;
+  checklistCompletionRate?: number;
+  filingReferences?: {
+    billOfEntryNumber?: string;
+    shippingBillNumber?: string;
+    filingDate?: string;
+    icegateJobNo?: string;
+    irn?: string;
+    drn?: string;
+    leoDate?: string;
+    customsStation?: string;
+  };
+  expenses?: number;
+  clientCharges?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomsJobDocument {
+  id: string;
+  jobId: string;
+  clientId?: string;
+  documentType: string;
+  documentName: string;
+  documentNumber?: string;
+  fileUrl?: string;
+  status?: 'required' | 'recommended' | 'received' | 'under_review' | 'verified' | 'rejected' | 'not_applicable';
+  verifiedBy?: string;
+  verifiedAt?: string;
+  expiryDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CustomsDocumentChecklist {
+  id: string;
+  jobId: string;
+  documentName?: string;
+  documentType?: string;
+  itemCode?: string;
+  itemLabel?: string;
+  category?: 'mandatory' | 'conditional' | 'supporting';
+  isRequired?: boolean;
+  isReceived?: boolean;
+  isVerified?: boolean;
+  isEsanchitUploaded?: boolean;
+  orderIndex?: number;
+  status?: 'required' | 'recommended' | 'conditional' | 'received' | 'under_review' | 'verified' | 'rejected' | 'not_applicable';
+  documentId?: string;
+  notes?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EsanchitRecord {
+  id: string;
+  jobId: string;
+  clientId?: string;
+  chaOrgId?: string;
+  documentCode?: string;
+  documentName?: string;
+  documentType?: string;
+  documentReference?: string;
+  issueDate?: string;
+  irn?: string;
+  irnNumber?: string;
+  drn?: string;
+  drnNumber?: string;
+  uploadStatus?: 'pending' | 'uploaded' | 'verified' | 'rejected';
+  verificationStatus?: 'uploaded' | 'verified' | 'rejected' | 'pending';
+  icegateUserId?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileSizeBytes?: number;
+  uploadDate?: string;
+  uploadedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CustomsQuery {
+  id: string;
+  jobId: string;
+  queryNumber?: string;
+  queryDate: string;
+  officerName?: string;
+  customsOfficer?: string;
+  queryText: string;
+  queryCategory?: string;
+  chaReply?: string;
+  replyText?: string;
+  replyDate?: string;
+  repliedBy?: string;
+  status: 'pending' | 'open' | 'replied' | 'resolved';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ================= SIGNATURE & STAMP TYPES =================
+export interface SignatureAsset {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  userId?: string;
+  signatoryName: string;
+  designation: string;
+  assetType?: 'signature' | 'company_stamp' | 'both';
+  originalImageUrl?: string;
+  processedPngUrl?: string;
+  imageUrl?: string;
+  stampImageUrl?: string;
+  isActive: boolean;
+  cropSettings?: any;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ================= AUDIT & EMAIL EVENT TYPES =================
+export interface DocumentAuditEvent {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  documentId: string;
+  userId?: string;
+  actorId?: string;
+  userEmail?: string;
+  actorEmail?: string;
+  userName?: string;
+  actorName?: string;
+  action: string;
+  ipAddress?: string;
+  details?: any;
+  timestamp?: string;
+  createdAt?: string;
+}
+
+export interface DocumentEmailEvent {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  documentId: string;
+  recipientEmail: string;
+  recipientName?: string;
+  subject: string;
+  status: 'queued' | 'sent' | 'delivered' | 'bounced' | 'failed';
+  resendMessageId?: string;
+  sentAt?: string;
+  createdAt?: string;
+}
+
+// ================= API KEYS & DEVELOPER TYPES =================
+export interface ApiKey {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  name?: string;
+  keyName?: string;
+  keyPrefix: string;
+  keyHash: string;
+  permissions: string[];
+  isActive: boolean;
+  totalRequests?: number;
+  lastUsedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ApiUsageLog {
+  id: string;
+  apiKeyId?: string;
+  orgId?: string;
+  organizationId?: string;
+  endpoint: string;
+  method: string;
+  statusCode: number;
+  ipAddress?: string;
+  responseTimeMs?: number;
+  timestamp?: string;
+  createdAt?: string;
+}
+
+// ================= CUSTOM DOCUMENT TEMPLATES =================
+export interface CustomTemplate {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  name: string;
+  documentType: string;
+  config: {
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontFamily?: string;
+    headerLayout?: 'standard' | 'centered' | 'modern' | 'minimal';
+    showStamp?: boolean;
+    showSignature?: boolean;
+    customFooterText?: string;
+    visibleColumns?: string[];
+  };
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ================= TEAM ACCOUNTS & RBAC =================
+export type TeamMemberRole =
+  | 'owner'
+  | 'admin'
+  | 'manager'
+  | 'editor'
+  | 'viewer'
+  | 'cha_broker'
+  | 'documentation_executive'
+  | 'accounts_executive';
+
+export interface OrganizationTeamMember {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  userId?: string;
+  name?: string;
+  email: string;
+  role: TeamMemberRole;
+  status: 'active' | 'invited' | 'suspended';
+  permissions?: string[];
+  invitedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ================= AI DOCUMENT CHECKING TYPES =================
+export interface AiDocumentReviewItem {
+  id?: string;
+  field: string;
+  doc1Name?: string;
+  doc1Value?: string;
+  doc2Name?: string;
+  doc2Value?: string;
+  category?: 'mismatch' | 'potential_mismatch' | 'missing' | 'format_error' | 'passed';
+  severity?: 'critical' | 'major' | 'minor' | 'matched' | 'high' | 'medium' | 'low';
+  explanation?: string;
+  recommendation?: string;
+  title?: string;
+  description?: string;
+  documentA?: { name: string; value: string };
+  documentB?: { name: string; value: string };
+  humanVerificationRequired?: boolean;
+}
+
+export interface AiDocumentReview {
+  id: string;
+  orgId?: string;
+  organizationId?: string;
+  jobId?: string;
+  documentId?: string;
+  documentIds?: string[];
+  consistencyScore?: number;
+  score?: number;
+  summary?: string;
+  overallStatus?: 'compliant' | 'issues_detected' | 'review_required';
+  reviewerId?: string;
+  items: AiDocumentReviewItem[];
+  analyzedAt?: string;
+  provider?: string;
+  createdAt?: string;
+}
+

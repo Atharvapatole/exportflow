@@ -20,6 +20,7 @@ import {
   Sparkles,
   CreditCard,
   Mail,
+  Ship,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAVIGATION } from '@/config/constants';
@@ -40,6 +41,7 @@ const ADMIN_ICON_MAP: Record<string, React.ElementType> = {
   Sparkles,
   CreditCard,
   Mail,
+  Ship,
 };
 
 export function AdminSidebar() {

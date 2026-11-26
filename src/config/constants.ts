@@ -134,6 +134,7 @@ export const CUSTOMER_NAVIGATION = [
   { name: 'Sales & Payments', href: '/dashboard/payments', icon: 'CreditCard' },
   { name: 'AI Export Assistant', href: '/dashboard/ai-assistant', icon: 'Sparkles' },
   { name: 'Reports & Analytics', href: '/dashboard/reports', icon: 'BarChart3' },
+  { name: 'Signatures & Stamps', href: '/dashboard/signatures', icon: 'FileCheck' },
   { name: 'Team Management', href: '/dashboard/team', icon: 'UserCheck' },
   { name: 'Company Settings', href: '/dashboard/settings', icon: 'Settings' },
 ];
@@ -142,6 +143,7 @@ export const ADMIN_NAVIGATION = [
   { name: 'Overview', href: '/admin', icon: 'LayoutDashboard' },
   { name: 'Users', href: '/admin/users', icon: 'Users' },
   { name: 'Companies', href: '/admin/companies', icon: 'Building2' },
+  { name: 'Customs Brokers (CHA)', href: '/admin/cha', icon: 'Ship' },
   { name: 'Documents Analytics', href: '/admin/documents', icon: 'FileText' },
   { name: 'Razorpay Gateway', href: '/admin/settings/payments/razorpay', icon: 'CreditCard' },
   { name: 'Platform Revenue', href: '/admin/revenue', icon: 'DollarSign' },

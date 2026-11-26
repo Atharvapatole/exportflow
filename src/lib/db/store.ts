@@ -8,6 +8,20 @@ import {
   OrganizationSubscription,
   ContactInquiry,
   ThemeMode,
+  ChaClient,
+  CustomsJob,
+  CustomsJobDocument,
+  CustomsDocumentChecklist,
+  EsanchitRecord,
+  CustomsQuery,
+  SignatureAsset,
+  DocumentAuditEvent,
+  DocumentEmailEvent,
+  ApiKey,
+  ApiUsageLog,
+  CustomTemplate,
+  OrganizationTeamMember,
+  AiDocumentReview,
 } from '@/types';
 
 /**
@@ -45,6 +59,20 @@ export interface DatabaseState {
   contactInquiries: ContactInquiry[];
   userThemePreferences: Record<string, ThemeMode>;
   platformAdmins: any[];
+  chaClients: ChaClient[];
+  customsJobs: CustomsJob[];
+  customsJobDocuments: CustomsJobDocument[];
+  customsDocumentChecklists: CustomsDocumentChecklist[];
+  esanchitRecords: EsanchitRecord[];
+  customsQueries: CustomsQuery[];
+  signatureAssets: SignatureAsset[];
+  documentAuditEvents: DocumentAuditEvent[];
+  documentEmailEvents: DocumentEmailEvent[];
+  apiKeys: ApiKey[];
+  apiUsageLogs: ApiUsageLog[];
+  customTemplates: CustomTemplate[];
+  organizationTeamMembers: OrganizationTeamMember[];
+  aiDocumentReviews: AiDocumentReview[];
 }
 
 const defaultState: DatabaseState = {
@@ -64,6 +92,20 @@ const defaultState: DatabaseState = {
   auditLogs: [],
   platformActivity: [],
   platformAdmins: [],
+  chaClients: [],
+  customsJobs: [],
+  customsJobDocuments: [],
+  customsDocumentChecklists: [],
+  esanchitRecords: [],
+  customsQueries: [],
+  signatureAssets: [],
+  documentAuditEvents: [],
+  documentEmailEvents: [],
+  apiKeys: [],
+  apiUsageLogs: [],
+  customTemplates: [],
+  organizationTeamMembers: [],
+  aiDocumentReviews: [],
   aiProviderConfig: {
     id: '00000000-0000-0000-0000-000000000001',
     isEnabled: true,
@@ -142,6 +184,20 @@ export function readDb(): DatabaseState {
     if (!parsed.contactInquiries) parsed.contactInquiries = [];
     if (!parsed.userThemePreferences) parsed.userThemePreferences = {};
     if (!parsed.platformAdmins) parsed.platformAdmins = [];
+    if (!parsed.chaClients) parsed.chaClients = [];
+    if (!parsed.customsJobs) parsed.customsJobs = [];
+    if (!parsed.customsJobDocuments) parsed.customsJobDocuments = [];
+    if (!parsed.customsDocumentChecklists) parsed.customsDocumentChecklists = [];
+    if (!parsed.esanchitRecords) parsed.esanchitRecords = [];
+    if (!parsed.customsQueries) parsed.customsQueries = [];
+    if (!parsed.signatureAssets) parsed.signatureAssets = [];
+    if (!parsed.documentAuditEvents) parsed.documentAuditEvents = [];
+    if (!parsed.documentEmailEvents) parsed.documentEmailEvents = [];
+    if (!parsed.apiKeys) parsed.apiKeys = [];
+    if (!parsed.apiUsageLogs) parsed.apiUsageLogs = [];
+    if (!parsed.customTemplates) parsed.customTemplates = [];
+    if (!parsed.organizationTeamMembers) parsed.organizationTeamMembers = [];
+    if (!parsed.aiDocumentReviews) parsed.aiDocumentReviews = [];
     return parsed;
   } catch (err) {
     console.error('Error reading db file, falling back to default:', err);

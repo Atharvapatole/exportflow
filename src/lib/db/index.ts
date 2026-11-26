@@ -27,9 +27,25 @@ import {
   ContactInquiry,
   DocumentAllowance,
   PlatformAdmin,
+  ChaClient,
+  CustomsJob,
+  CustomsJobDocument,
+  CustomsDocumentChecklist,
+  EsanchitRecord,
+  CustomsQuery,
+  SignatureAsset,
+  DocumentAuditEvent,
+  DocumentEmailEvent,
+  ApiKey,
+  ApiUsageLog,
+  CustomTemplate,
+  OrganizationTeamMember,
+  AiDocumentReview,
 } from '@/types';
+import crypto from 'crypto';
 import { roundToTwo, safeAdd } from '@/lib/utils';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { encryptSecret, decryptSecret } from '@/lib/crypto';
 
 // ================= USER REPOSITORY =================
 export const userRepo = {
@@ -283,7 +299,19 @@ export const orgRepo = {
   },
 
   async create(
-    data: { name: string; businessType: string; country: string; ownerId: string; id?: string },
+    data: {
+      name: string;
+      businessType: string;
+      country: string;
+      ownerId: string;
+      id?: string;
+      orgType?: 'exporter' | 'cha';
+      chaLicenseNumber?: string;
+      chaLicenseAuthority?: string;
+      chaLicenseStatus?: 'unverified' | 'pending' | 'verified' | 'rejected';
+      address?: string;
+      phone?: string;
+    },
     userEmail: string,
     userName: string
   ): Promise<{ organization: Organization; profile: CompanyProfile }> {
@@ -298,6 +326,12 @@ export const orgRepo = {
       ownerId: data.ownerId,
       country: data.country,
       businessType: data.businessType,
+      orgType: data.orgType,
+      chaLicenseNumber: data.chaLicenseNumber,
+      chaLicenseAuthority: data.chaLicenseAuthority,
+      chaLicenseStatus: data.chaLicenseStatus,
+      address: data.address,
+      phone: data.phone,
       createdAt: now,
       updatedAt: now,
     };
@@ -422,6 +456,33 @@ export const orgRepo = {
   async listAll(): Promise<Organization[]> {
     const db = readDb();
     return db.organizations;
+  },
+
+  async update(id: string, updates: Partial<Organization>): Promise<Organization | null> {
+    const db = readDb();
+    const index = db.organizations.findIndex((o) => o.id === id);
+    if (index === -1) return null;
+
+    db.organizations[index] = {
+      ...db.organizations[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    writeDb(db);
+
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const payload: any = { updated_at: new Date().toISOString() };
+        if (updates.name) payload.name = updates.name;
+        if (updates.chaLicenseStatus) payload.cha_license_status = updates.chaLicenseStatus;
+        if (updates.chaLicenseNumber) payload.cha_license_number = updates.chaLicenseNumber;
+        if (updates.chaLicenseAuthority) payload.cha_license_authority = updates.chaLicenseAuthority;
+        await adminClient.from('organizations').update(payload).eq('id', id);
+      }
+    } catch {}
+
+    return db.organizations[index];
   },
 };
 
@@ -1041,6 +1102,47 @@ export const revisionRepo = {
 export const razorpayRepo = {
   async getConfig(): Promise<RazorpayConfig> {
     const db = readDb();
+
+    // 1. Check Supabase razorpay_configurations table first
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const { data: row, error } = await adminClient
+          .from('razorpay_configurations')
+          .select('*')
+          .eq('id', '00000000-0000-0000-0000-000000000002')
+          .single();
+
+        if (row && !error) {
+          const config: RazorpayConfig = {
+            id: row.id,
+            isEnabled: row.is_enabled ?? false,
+            mode: (row.mode as 'test' | 'live') || 'test',
+            testKeyId: row.test_key_id || '',
+            testKeySecret: decryptSecret(row.test_key_secret || ''),
+            testWebhookSecret: decryptSecret(row.test_webhook_secret || ''),
+            liveKeyId: row.live_key_id || '',
+            liveKeySecret: decryptSecret(row.live_key_secret || ''),
+            liveWebhookSecret: decryptSecret(row.live_webhook_secret || ''),
+            merchantDisplayName: row.merchant_display_name || 'ExportFlow by BENZWELL',
+            merchantSupportEmail: row.merchant_support_email || 'info@benzwell.in',
+            status: (row.status as any) || 'unconfigured',
+            lastSuccessfulConnection: row.last_successful_connection || undefined,
+            lastConfigUpdate: row.last_config_update || new Date().toISOString(),
+            webhookStatus: (row.webhook_status as any) || 'unverified',
+            lastReceivedWebhook: row.last_received_webhook || undefined,
+            lastSuccessfulWebhook: row.last_successful_webhook || undefined,
+            failedWebhookCount: row.failed_webhook_count || 0,
+          };
+          db.razorpayConfig = config;
+          writeDb(db);
+          return config;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[RAZORPAY REPO] Supabase getConfig warning:', err.message);
+    }
+
     if (!db.razorpayConfig) {
       db.razorpayConfig = {
         id: '00000000-0000-0000-0000-000000000002',
@@ -1067,13 +1169,60 @@ export const razorpayRepo = {
   async updateConfig(updates: Partial<RazorpayConfig>): Promise<RazorpayConfig> {
     const db = readDb();
     const current = await this.getConfig();
-    db.razorpayConfig = {
+
+    // Preserve existing secrets if update is omitted or contains masked bullets
+    const safeUpdates: Partial<RazorpayConfig> = { ...updates };
+    if (!safeUpdates.testKeySecret || safeUpdates.testKeySecret.includes('••••')) {
+      safeUpdates.testKeySecret = current.testKeySecret;
+    }
+    if (!safeUpdates.testWebhookSecret || safeUpdates.testWebhookSecret.includes('••••')) {
+      safeUpdates.testWebhookSecret = current.testWebhookSecret;
+    }
+    if (!safeUpdates.liveKeySecret || safeUpdates.liveKeySecret.includes('••••')) {
+      safeUpdates.liveKeySecret = current.liveKeySecret;
+    }
+    if (!safeUpdates.liveWebhookSecret || safeUpdates.liveWebhookSecret.includes('••••')) {
+      safeUpdates.liveWebhookSecret = current.liveWebhookSecret;
+    }
+
+    const updatedConfig: RazorpayConfig = {
       ...current,
-      ...updates,
+      ...safeUpdates,
       lastConfigUpdate: new Date().toISOString(),
     };
+
+    // 1. Save to Supabase with server-side encryption for secrets
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        await adminClient.from('razorpay_configurations').upsert({
+          id: '00000000-0000-0000-0000-000000000002',
+          is_enabled: updatedConfig.isEnabled,
+          mode: updatedConfig.mode,
+          test_key_id: updatedConfig.testKeyId,
+          test_key_secret: encryptSecret(updatedConfig.testKeySecret || ''),
+          test_webhook_secret: encryptSecret(updatedConfig.testWebhookSecret || ''),
+          live_key_id: updatedConfig.liveKeyId,
+          live_key_secret: encryptSecret(updatedConfig.liveKeySecret || ''),
+          live_webhook_secret: encryptSecret(updatedConfig.liveWebhookSecret || ''),
+          merchant_display_name: updatedConfig.merchantDisplayName,
+          merchant_support_email: updatedConfig.merchantSupportEmail,
+          status: updatedConfig.status,
+          last_successful_connection: updatedConfig.lastSuccessfulConnection || null,
+          last_config_update: updatedConfig.lastConfigUpdate,
+          webhook_status: updatedConfig.webhookStatus,
+          last_received_webhook: updatedConfig.lastReceivedWebhook || null,
+          last_successful_webhook: updatedConfig.lastSuccessfulWebhook || null,
+          failed_webhook_count: updatedConfig.failedWebhookCount,
+        });
+      }
+    } catch (err: any) {
+      console.error('[RAZORPAY REPO] Supabase updateConfig error:', err.message);
+    }
+
+    db.razorpayConfig = updatedConfig;
     writeDb(db);
-    return db.razorpayConfig;
+    return updatedConfig;
   },
 
   async logWebhookEvent(event: Omit<RazorpayWebhookEvent, 'receivedAt'>): Promise<RazorpayWebhookEvent> {
@@ -1083,7 +1232,24 @@ export const razorpayRepo = {
       ...event,
       receivedAt: new Date().toISOString(),
     };
-    // Keep max 200 events
+
+    // Save to Supabase
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        await adminClient.from('razorpay_webhook_events').upsert({
+          id: entry.id,
+          event_type: entry.eventType,
+          payload: entry.payload,
+          signature: entry.signature,
+          status: entry.status,
+          error_message: entry.errorMessage || null,
+          received_at: entry.receivedAt,
+        });
+      }
+    } catch {}
+
+    // Keep max 200 events locally
     db.razorpayWebhookEvents.push(entry);
     if (db.razorpayWebhookEvents.length > 200) {
       db.razorpayWebhookEvents = db.razorpayWebhookEvents.slice(-200);
@@ -1113,6 +1279,28 @@ export const razorpayRepo = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    // Save to Supabase
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        await adminClient.from('razorpay_payment_logs').insert({
+          organization_id: log.organizationId,
+          user_id: log.userId,
+          order_id: log.orderId,
+          payment_id: log.paymentId || null,
+          amount: log.amount,
+          currency: log.currency,
+          status: log.status,
+          item_type: log.itemType,
+          item_id: log.itemId,
+          description: log.description || null,
+          credits_added: log.creditsAdded || null,
+          error_details: log.errorDetails || null,
+        });
+      }
+    } catch {}
+
     db.razorpayPaymentLogs.push(newLog);
     writeDb(db);
     return newLog;
@@ -1129,6 +1317,19 @@ export const razorpayRepo = {
       updatedAt: new Date().toISOString(),
     };
     writeDb(db);
+
+    // Sync to Supabase
+    try {
+      const adminClient = createAdminClient();
+      if (adminClient) {
+        const patch: any = { updated_at: new Date().toISOString() };
+        if (updates.status) patch.status = updates.status;
+        if (updates.paymentId) patch.payment_id = updates.paymentId;
+        if (updates.errorDetails) patch.error_details = updates.errorDetails;
+        await adminClient.from('razorpay_payment_logs').update(patch).eq('order_id', orderId);
+      }
+    } catch {}
+
     return db.razorpayPaymentLogs[index];
   },
 
@@ -1677,4 +1878,954 @@ export const platformAdminRepo = {
     return false;
   },
 };
+
+// ================= CHA CLIENT REPOSITORY =================
+export const chaClientRepo = {
+  async listByOrg(orgId: string): Promise<ChaClient[]> {
+    const db = readDb();
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data } = await supabase.from('cha_clients').select('*').eq('cha_org_id', orgId).order('company_name');
+        if (data && data.length > 0) {
+          const mapped: ChaClient[] = data.map((d: any) => ({
+            id: d.id,
+            chaOrgId: d.cha_org_id,
+            clientOrgId: d.client_org_id,
+            companyName: d.company_name,
+            iecNumber: d.iec_number,
+            gstin: d.gstin,
+            pan: d.pan,
+            contactPerson: d.contact_person,
+            email: d.email,
+            phone: d.phone,
+            address: d.address,
+            city: d.city,
+            state: d.state,
+            pincode: d.pincode,
+            country: d.country,
+            kycStatus: d.kyc_status,
+            kycDocuments: d.kyc_documents,
+            creditTerms: d.credit_terms,
+            notes: d.notes,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          }));
+          return mapped;
+        }
+      }
+    } catch {}
+    return (db.chaClients || []).filter((c) => c.chaOrgId === orgId);
+  },
+
+  async findById(id: string): Promise<ChaClient | null> {
+    const db = readDb();
+    const local = (db.chaClients || []).find((c) => c.id === id);
+    if (local) return local;
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data } = await supabase.from('cha_clients').select('*').eq('id', id).single();
+        if (data) {
+          return {
+            id: data.id,
+            chaOrgId: data.cha_org_id,
+            clientOrgId: data.client_org_id,
+            companyName: data.company_name,
+            iecNumber: data.iec_number,
+            gstin: data.gstin,
+            pan: data.pan,
+            contactPerson: data.contact_person,
+            email: data.email,
+            phone: data.phone,
+            address: data.address,
+            city: data.city,
+            state: data.state,
+            pincode: data.pincode,
+            country: data.country,
+            kycStatus: data.kyc_status,
+            kycDocuments: data.kyc_documents,
+            creditTerms: data.credit_terms,
+            notes: data.notes,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  },
+
+  async create(data: Omit<ChaClient, 'id' | 'createdAt' | 'updatedAt'>): Promise<ChaClient> {
+    const now = new Date().toISOString();
+    const client: ChaClient = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('cha_clients').insert({
+          id: client.id,
+          cha_org_id: client.chaOrgId,
+          client_org_id: client.clientOrgId,
+          company_name: client.companyName,
+          iec_number: client.iecNumber,
+          gstin: client.gstin,
+          pan: client.pan,
+          contact_person: client.contactPerson,
+          email: client.email,
+          phone: client.phone,
+          address: client.address,
+          city: client.city,
+          state: client.state,
+          pincode: client.pincode,
+          country: client.country,
+          kyc_status: client.kycStatus,
+          kyc_documents: client.kycDocuments,
+          credit_terms: client.creditTerms,
+          notes: client.notes,
+          created_at: client.createdAt,
+          updated_at: client.updatedAt,
+        });
+      }
+    } catch {}
+
+    const db = readDb();
+    if (!db.chaClients) db.chaClients = [];
+    db.chaClients.push(client);
+    writeDb(db);
+    return client;
+  },
+
+  async update(id: string, updates: Partial<ChaClient>): Promise<ChaClient | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.chaClients) db.chaClients = [];
+    const index = db.chaClients.findIndex((c) => c.id === id);
+    if (index === -1) return null;
+
+    db.chaClients[index] = {
+      ...db.chaClients[index],
+      ...updates,
+      updatedAt: now,
+    };
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const payload: any = { updated_at: now };
+        if (updates.companyName !== undefined) payload.company_name = updates.companyName;
+        if (updates.iecNumber !== undefined) payload.iec_number = updates.iecNumber;
+        if (updates.gstin !== undefined) payload.gstin = updates.gstin;
+        if (updates.pan !== undefined) payload.pan = updates.pan;
+        if (updates.contactPerson !== undefined) payload.contact_person = updates.contactPerson;
+        if (updates.email !== undefined) payload.email = updates.email;
+        if (updates.phone !== undefined) payload.phone = updates.phone;
+        if (updates.address !== undefined) payload.address = updates.address;
+        if (updates.kycStatus !== undefined) payload.kyc_status = updates.kycStatus;
+        if (updates.notes !== undefined) payload.notes = updates.notes;
+        await supabase.from('cha_clients').update(payload).eq('id', id);
+      }
+    } catch {}
+
+    return db.chaClients[index];
+  },
+
+  async delete(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.chaClients) return false;
+    const initialLen = db.chaClients.length;
+    db.chaClients = db.chaClients.filter((c) => c.id !== id);
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('cha_clients').delete().eq('id', id);
+      }
+    } catch {}
+
+    return db.chaClients.length < initialLen;
+  },
+};
+
+// ================= CUSTOMS JOB REPOSITORY =================
+export const customsJobRepo = {
+  async getNextJobNumber(orgId: string, jobType: string): Promise<string> {
+    const prefix = jobType === 'import' ? 'IMP' : jobType === 'export' ? 'EXP' : 'JOB';
+    const year = new Date().getFullYear();
+    const db = readDb();
+    const count = (db.customsJobs || []).filter((j) => j.chaOrgId === orgId).length + 1;
+    return `${prefix}-${year}-${String(count).padStart(4, '0')}`;
+  },
+
+  async listByOrg(orgId: string, filter?: { jobType?: string; status?: string; clientId?: string }): Promise<CustomsJob[]> {
+    const db = readDb();
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        let q = supabase.from('customs_jobs').select('*').eq('cha_org_id', orgId);
+        if (filter?.jobType) q = q.eq('job_type', filter.jobType);
+        if (filter?.status) q = q.eq('status', filter.status);
+        if (filter?.clientId) q = q.eq('client_id', filter.clientId);
+        const { data } = await q.order('created_at', { ascending: false });
+        if (data && data.length > 0) {
+          return data.map((d: any) => ({
+            id: d.id,
+            chaOrgId: d.cha_org_id,
+            clientId: d.client_id,
+            clientName: d.client_name,
+            jobNumber: d.job_number,
+            jobType: d.job_type,
+            status: d.status,
+            customsStation: d.customs_station,
+            customsHouseCode: d.customs_house_code,
+            billOfEntryNumber: d.bill_of_entry_number,
+            billOfEntryDate: d.bill_of_entry_date,
+            shippingBillNumber: d.shipping_bill_number,
+            shippingBillDate: d.shipping_bill_date,
+            irnNumber: d.irn_number,
+            drnNumber: d.drn_number,
+            leoNumber: d.leo_number,
+            leoDate: d.leo_date,
+            oocNumber: d.ooc_number,
+            oocDate: d.ooc_date,
+            igmNumber: d.igm_number,
+            igmDate: d.igm_date,
+            blAwbNumber: d.bl_awb_number,
+            blAwbDate: d.bl_awb_date,
+            containerNumbers: d.container_numbers || [],
+            invoiceNumber: d.invoice_number,
+            invoiceValue: d.invoice_value,
+            currency: d.currency || 'USD',
+            totalPackages: d.total_packages,
+            grossWeightKg: d.gross_weight_kg,
+            portOfLoading: d.port_of_loading,
+            portOfDischarge: d.port_of_discharge,
+            goodsDescription: d.goods_description,
+            hsCodes: d.hs_codes || [],
+            assignedTo: d.assigned_to,
+            estimatedDutyInr: d.estimated_duty_inr,
+            actualDutyPaidInr: d.actual_duty_paid_inr,
+            chaChargesInr: d.cha_charges_inr,
+            notes: d.notes,
+            checklistCompletionRate: d.checklist_completion_rate || 0,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          }));
+        }
+      }
+    } catch {}
+
+    let list = (db.customsJobs || []).filter((j) => j.chaOrgId === orgId);
+    if (filter?.jobType) list = list.filter((j) => j.jobType === filter.jobType);
+    if (filter?.status) list = list.filter((j) => j.status === filter.status);
+    if (filter?.clientId) list = list.filter((j) => j.clientId === filter.clientId);
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  async findById(id: string): Promise<CustomsJob | null> {
+    const db = readDb();
+    const local = (db.customsJobs || []).find((j) => j.id === id);
+    if (local) return local;
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const { data } = await supabase.from('customs_jobs').select('*').eq('id', id).single();
+        if (data) {
+          return {
+            id: data.id,
+            chaOrgId: data.cha_org_id,
+            clientId: data.client_id,
+            clientName: data.client_name,
+            jobNumber: data.job_number,
+            jobType: data.job_type,
+            status: data.status,
+            customsStation: data.customs_station,
+            customsHouseCode: data.customs_house_code,
+            billOfEntryNumber: data.bill_of_entry_number,
+            billOfEntryDate: data.bill_of_entry_date,
+            shippingBillNumber: data.shipping_bill_number,
+            shippingBillDate: data.shipping_bill_date,
+            irnNumber: data.irn_number,
+            drnNumber: data.drn_number,
+            leoNumber: data.leo_number,
+            leoDate: data.leo_date,
+            oocNumber: data.ooc_number,
+            oocDate: data.ooc_date,
+            igmNumber: data.igm_number,
+            igmDate: data.igm_date,
+            blAwbNumber: data.bl_awb_number,
+            blAwbDate: data.bl_awb_date,
+            containerNumbers: data.container_numbers || [],
+            invoiceNumber: data.invoice_number,
+            invoiceValue: data.invoice_value,
+            currency: data.currency || 'USD',
+            totalPackages: data.total_packages,
+            grossWeightKg: data.gross_weight_kg,
+            portOfLoading: data.port_of_loading,
+            portOfDischarge: data.port_of_discharge,
+            goodsDescription: data.goods_description,
+            hsCodes: data.hs_codes || [],
+            assignedTo: data.assigned_to,
+            estimatedDutyInr: data.estimated_duty_inr,
+            actualDutyPaidInr: data.actual_duty_paid_inr,
+            chaChargesInr: data.cha_charges_inr,
+            notes: data.notes,
+            checklistCompletionRate: data.checklist_completion_rate || 0,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  },
+
+  async create(data: Omit<CustomsJob, 'id' | 'createdAt' | 'updatedAt' | 'jobNumber'> & { jobNumber?: string }): Promise<CustomsJob> {
+    const now = new Date().toISOString();
+    const jobNumber = data.jobNumber || (await this.getNextJobNumber(data.chaOrgId, data.jobType));
+    const job: CustomsJob = {
+      ...data,
+      id: crypto.randomUUID(),
+      jobNumber,
+      checklistCompletionRate: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('customs_jobs').insert({
+          id: job.id,
+          cha_org_id: job.chaOrgId,
+          client_id: job.clientId,
+          client_name: job.clientName,
+          job_number: job.jobNumber,
+          job_type: job.jobType,
+          status: job.status,
+          customs_station: job.customsStation,
+          customs_house_code: job.customsHouseCode,
+          bill_of_entry_number: job.billOfEntryNumber,
+          bill_of_entry_date: job.billOfEntryDate,
+          shipping_bill_number: job.shippingBillNumber,
+          shipping_bill_date: job.shippingBillDate,
+          irn_number: job.irnNumber,
+          drn_number: job.drnNumber,
+          leo_number: job.leoNumber,
+          leo_date: job.leoDate,
+          ooc_number: job.oocNumber,
+          ooc_date: job.oocDate,
+          igm_number: job.igmNumber,
+          igm_date: job.igmDate,
+          bl_awb_number: job.blAwbNumber,
+          bl_awb_date: job.blAwbDate,
+          container_numbers: job.containerNumbers,
+          invoice_number: job.invoiceNumber,
+          invoice_value: job.invoiceValue,
+          currency: job.currency,
+          total_packages: job.totalPackages,
+          gross_weight_kg: job.grossWeightKg,
+          port_of_loading: job.portOfLoading,
+          port_of_discharge: job.portOfDischarge,
+          goods_description: job.goodsDescription,
+          hs_codes: job.hsCodes,
+          assigned_to: job.assignedTo,
+          estimated_duty_inr: job.estimatedDutyInr,
+          actual_duty_paid_inr: job.actualDutyPaidInr,
+          cha_charges_inr: job.chaChargesInr,
+          notes: job.notes,
+          checklist_completion_rate: 0,
+          created_at: job.createdAt,
+          updated_at: job.updatedAt,
+        });
+      }
+    } catch {}
+
+    const db = readDb();
+    if (!db.customsJobs) db.customsJobs = [];
+    db.customsJobs.push(job);
+    writeDb(db);
+
+    // Also auto-initialize default checklist for this job type
+    await customsChecklistRepo.initializeChecklistForJobType(job.id, job.jobType);
+
+    return job;
+  },
+
+  async update(id: string, updates: Partial<CustomsJob>): Promise<CustomsJob | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.customsJobs) db.customsJobs = [];
+    const index = db.customsJobs.findIndex((j) => j.id === id);
+    if (index === -1) return null;
+
+    db.customsJobs[index] = {
+      ...db.customsJobs[index],
+      ...updates,
+      updatedAt: now,
+    };
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        const payload: any = { updated_at: now };
+        if (updates.status !== undefined) payload.status = updates.status;
+        if (updates.billOfEntryNumber !== undefined) payload.bill_of_entry_number = updates.billOfEntryNumber;
+        if (updates.billOfEntryDate !== undefined) payload.bill_of_entry_date = updates.billOfEntryDate;
+        if (updates.shippingBillNumber !== undefined) payload.shipping_bill_number = updates.shippingBillNumber;
+        if (updates.shippingBillDate !== undefined) payload.shipping_bill_date = updates.shippingBillDate;
+        if (updates.irnNumber !== undefined) payload.irn_number = updates.irnNumber;
+        if (updates.drnNumber !== undefined) payload.drn_number = updates.drnNumber;
+        if (updates.leoNumber !== undefined) payload.leo_number = updates.leoNumber;
+        if (updates.leoDate !== undefined) payload.leo_date = updates.leoDate;
+        if (updates.oocNumber !== undefined) payload.ooc_number = updates.oocNumber;
+        if (updates.oocDate !== undefined) payload.ooc_date = updates.oocDate;
+        if (updates.igmNumber !== undefined) payload.igm_number = updates.igmNumber;
+        if (updates.blAwbNumber !== undefined) payload.bl_awb_number = updates.blAwbNumber;
+        if (updates.checklistCompletionRate !== undefined) payload.checklist_completion_rate = updates.checklistCompletionRate;
+        if (updates.notes !== undefined) payload.notes = updates.notes;
+        await supabase.from('customs_jobs').update(payload).eq('id', id);
+      }
+    } catch {}
+
+    return db.customsJobs[index];
+  },
+};
+
+// ================= CUSTOMS CHECKLIST REPOSITORY =================
+export const customsChecklistRepo = {
+  async listByJob(jobId: string): Promise<CustomsDocumentChecklist[]> {
+    const db = readDb();
+    return (db.customsDocumentChecklists || [])
+      .filter((c) => c.jobId === jobId)
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+  },
+
+  async initializeChecklistForJobType(jobId: string, jobType: string): Promise<CustomsDocumentChecklist[]> {
+    const db = readDb();
+    const existing = (db.customsDocumentChecklists || []).filter((c) => c.jobId === jobId);
+    if (existing.length > 0) return existing;
+
+    const defaultItems =
+      jobType === 'import'
+        ? [
+            { name: 'Commercial Invoice', required: true, desc: 'Supplier signed invoice with terms & HS codes' },
+            { name: 'Packing List', required: true, desc: 'Package breakdown, gross & net weight' },
+            { name: 'Bill of Lading / Airway Bill', required: true, desc: 'Original / Express BL / AWB' },
+            { name: 'GATT Valuation Declaration', required: true, desc: 'Rule 10 valuation disclosure' },
+            { name: 'Certificate of Origin (COO)', required: false, desc: 'Preferential tariff benefit if applicable (e.g. FTA)' },
+            { name: 'Import License / Authorization', required: false, desc: 'DGFT license or notification compliance if restricted' },
+            { name: 'e-SANCHIT Document Upload', required: true, desc: 'Supporting docs uploaded on ICEGATE with IRN generated' },
+            { name: 'Duty Payment Challan', required: false, desc: 'ICEGATE ECL or customs duty receipt' },
+            { name: 'Out of Charge (OOC) Copy', required: false, desc: 'Customs final clearance receipt' },
+          ]
+        : [
+            { name: 'Commercial Invoice', required: true, desc: 'Export commercial invoice with LUT reference' },
+            { name: 'Packing List', required: true, desc: 'Detailed packing list with mark & numbers' },
+            { name: 'Shipping Instructions (SI)', required: true, desc: 'Instructions to shipping line for BL release' },
+            { name: 'LUT / Bond Reference', required: true, desc: 'GST Letter of Undertaking for zero-rated export' },
+            { name: 'Certificate of Origin', required: false, desc: 'Chamber of Commerce / EPC issued COO' },
+            { name: 'e-SANCHIT Upload', required: true, desc: 'Mandatory e-SANCHIT IRN record' },
+            { name: 'Let Export Order (LEO) Copy', required: false, desc: 'Customs Officer stamped clearance order' },
+          ];
+
+    const now = new Date().toISOString();
+    const newItems: CustomsDocumentChecklist[] = defaultItems.map((item, index) => ({
+      id: crypto.randomUUID(),
+      jobId,
+      documentName: item.name,
+      documentType: item.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      isRequired: item.required,
+      isReceived: false,
+      isVerified: false,
+      isEsanchitUploaded: false,
+      notes: item.desc,
+      orderIndex: index + 1,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    if (!db.customsDocumentChecklists) db.customsDocumentChecklists = [];
+    db.customsDocumentChecklists.push(...newItems);
+    writeDb(db);
+
+    return newItems;
+  },
+
+  async updateItem(id: string, updates: Partial<CustomsDocumentChecklist>): Promise<CustomsDocumentChecklist | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.customsDocumentChecklists) db.customsDocumentChecklists = [];
+    const index = db.customsDocumentChecklists.findIndex((i) => i.id === id);
+    if (index === -1) return null;
+
+    db.customsDocumentChecklists[index] = {
+      ...db.customsDocumentChecklists[index],
+      ...updates,
+      updatedAt: now,
+    };
+
+    // Calculate completion rate for parent job
+    const jobId = db.customsDocumentChecklists[index].jobId;
+    const jobItems = db.customsDocumentChecklists.filter((i) => i.jobId === jobId && i.isRequired);
+    const completed = jobItems.filter((i) => i.isReceived && i.isVerified).length;
+    const rate = jobItems.length > 0 ? Math.round((completed / jobItems.length) * 100) : 0;
+
+    writeDb(db);
+    await customsJobRepo.update(jobId, { checklistCompletionRate: rate });
+
+    return db.customsDocumentChecklists[index];
+  },
+};
+
+// ================= E-SANCHIT REPOSITORY =================
+export const esanchitRepo = {
+  async listByJob(jobId: string): Promise<EsanchitRecord[]> {
+    const db = readDb();
+    return (db.esanchitRecords || []).filter((r) => r.jobId === jobId);
+  },
+
+  async listByOrg(orgId: string): Promise<EsanchitRecord[]> {
+    const db = readDb();
+    return (db.esanchitRecords || []).filter((r) => r.chaOrgId === orgId);
+  },
+
+  async findById(id: string): Promise<EsanchitRecord | null> {
+    const db = readDb();
+    return (db.esanchitRecords || []).find((r) => r.id === id) || null;
+  },
+
+  async create(data: Omit<EsanchitRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<EsanchitRecord> {
+    const now = new Date().toISOString();
+    const record: EsanchitRecord = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.esanchitRecords) db.esanchitRecords = [];
+    db.esanchitRecords.push(record);
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('esanchit_document_records').insert({
+          id: record.id,
+          job_id: record.jobId,
+          cha_org_id: record.chaOrgId,
+          document_code: record.documentCode,
+          document_name: record.documentName,
+          document_reference: record.documentReference,
+          irn_number: record.irnNumber,
+          drn_number: record.drnNumber,
+          upload_status: record.uploadStatus,
+          icegate_user_id: record.icegateUserId,
+          file_name: record.fileName,
+          file_url: record.fileUrl,
+          file_size_bytes: record.fileSizeBytes,
+          uploaded_at: record.uploadedAt,
+          notes: record.notes,
+        });
+      }
+    } catch {}
+
+    return record;
+  },
+
+  async update(id: string, updates: Partial<EsanchitRecord>): Promise<EsanchitRecord | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.esanchitRecords) db.esanchitRecords = [];
+    const index = db.esanchitRecords.findIndex((r) => r.id === id);
+    if (index === -1) return null;
+
+    db.esanchitRecords[index] = {
+      ...db.esanchitRecords[index],
+      ...updates,
+      updatedAt: now,
+    };
+    writeDb(db);
+    return db.esanchitRecords[index];
+  },
+};
+
+// ================= CUSTOMS QUERY REPOSITORY =================
+export const customsQueryRepo = {
+  async listByJob(jobId: string): Promise<CustomsQuery[]> {
+    const db = readDb();
+    return (db.customsQueries || []).filter((q) => q.jobId === jobId);
+  },
+
+  async create(data: Omit<CustomsQuery, 'id' | 'createdAt' | 'updatedAt'>): Promise<CustomsQuery> {
+    const now = new Date().toISOString();
+    const query: CustomsQuery = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.customsQueries) db.customsQueries = [];
+    db.customsQueries.push(query);
+    writeDb(db);
+    return query;
+  },
+
+  async reply(id: string, replyText: string, responderId: string): Promise<CustomsQuery | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.customsQueries) db.customsQueries = [];
+    const index = db.customsQueries.findIndex((q) => q.id === id);
+    if (index === -1) return null;
+
+    db.customsQueries[index] = {
+      ...db.customsQueries[index],
+      chaReply: replyText,
+      replyDate: now,
+      status: 'replied',
+      updatedAt: now,
+    };
+    writeDb(db);
+    return db.customsQueries[index];
+  },
+
+  async resolve(id: string): Promise<CustomsQuery | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.customsQueries) db.customsQueries = [];
+    const index = db.customsQueries.findIndex((q) => q.id === id);
+    if (index === -1) return null;
+
+    db.customsQueries[index] = {
+      ...db.customsQueries[index],
+      status: 'resolved',
+      updatedAt: now,
+    };
+    writeDb(db);
+    return db.customsQueries[index];
+  },
+};
+
+// ================= SIGNATURE & STAMP REPOSITORY =================
+export const signatureRepo = {
+  async listByOrg(orgId: string): Promise<SignatureAsset[]> {
+    const db = readDb();
+    return (db.signatureAssets || []).filter((s) => s.orgId === orgId);
+  },
+
+  async getActiveSignature(orgId: string, signatoryName?: string): Promise<SignatureAsset | null> {
+    const db = readDb();
+    const list = (db.signatureAssets || []).filter((s) => s.orgId === orgId && s.isActive);
+    if (signatoryName) {
+      const match = list.find((s) => s.signatoryName.toLowerCase() === signatoryName.toLowerCase());
+      if (match) return match;
+    }
+    return list.find((s) => s.assetType === 'signature') || list[0] || null;
+  },
+
+  async create(data: Omit<SignatureAsset, 'id' | 'createdAt' | 'updatedAt'>): Promise<SignatureAsset> {
+    const now = new Date().toISOString();
+    const asset: SignatureAsset = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.signatureAssets) db.signatureAssets = [];
+    db.signatureAssets.push(asset);
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('signature_assets').insert({
+          id: asset.id,
+          org_id: asset.orgId,
+          user_id: asset.userId,
+          signatory_name: asset.signatoryName,
+          designation: asset.designation,
+          asset_type: asset.assetType,
+          original_image_url: asset.originalImageUrl,
+          processed_png_url: asset.processedPngUrl,
+          is_active: asset.isActive,
+          crop_settings: asset.cropSettings,
+        });
+      }
+    } catch {}
+
+    return asset;
+  },
+
+  async update(id: string, updates: Partial<SignatureAsset>): Promise<SignatureAsset | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.signatureAssets) db.signatureAssets = [];
+    const index = db.signatureAssets.findIndex((s) => s.id === id);
+    if (index === -1) return null;
+
+    db.signatureAssets[index] = {
+      ...db.signatureAssets[index],
+      ...updates,
+      updatedAt: now,
+    };
+    writeDb(db);
+    return db.signatureAssets[index];
+  },
+
+  async delete(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.signatureAssets) return false;
+    const initialLen = db.signatureAssets.length;
+    db.signatureAssets = db.signatureAssets.filter((s) => s.id !== id);
+    writeDb(db);
+    return db.signatureAssets.length < initialLen;
+  },
+};
+
+// ================= AUDIT LOG REPOSITORY =================
+export const auditRepo = {
+  async logDocumentEvent(event: Omit<DocumentAuditEvent, 'id' | 'timestamp'>): Promise<DocumentAuditEvent> {
+    const now = new Date().toISOString();
+    const record: DocumentAuditEvent = {
+      ...event,
+      id: crypto.randomUUID(),
+      timestamp: now,
+    };
+    const db = readDb();
+    if (!db.documentAuditEvents) db.documentAuditEvents = [];
+    db.documentAuditEvents.unshift(record);
+    if (db.documentAuditEvents.length > 5000) db.documentAuditEvents.pop();
+    writeDb(db);
+
+    try {
+      const supabase = createAdminClient();
+      if (supabase) {
+        await supabase.from('document_audit_events').insert({
+          id: record.id,
+          document_id: record.documentId,
+          org_id: record.orgId,
+          actor_id: record.actorId,
+          actor_email: record.actorEmail,
+          actor_name: record.actorName,
+          action: record.action,
+          details: record.details,
+          ip_address: record.ipAddress,
+          timestamp: record.timestamp,
+        });
+      }
+    } catch {}
+
+    return record;
+  },
+
+  async listByDocument(documentId: string): Promise<DocumentAuditEvent[]> {
+    const db = readDb();
+    return (db.documentAuditEvents || []).filter((e) => e.documentId === documentId);
+  },
+
+  async listByOrg(orgId: string, limit = 50): Promise<DocumentAuditEvent[]> {
+    const db = readDb();
+    return (db.documentAuditEvents || [])
+      .filter((e) => e.orgId === orgId)
+      .slice(0, limit);
+  },
+};
+
+// ================= API KEY REPOSITORY =================
+export const apiKeyRepo = {
+  async listByOrg(orgId: string): Promise<ApiKey[]> {
+    const db = readDb();
+    return (db.apiKeys || []).filter((k) => k.orgId === orgId);
+  },
+
+  async createKey(orgId: string, name: string, permissions: string[], createdBy: string): Promise<{ apiKey: ApiKey; rawKey: string }> {
+    const rawKey = `ef_${crypto.randomBytes(24).toString('hex')}`;
+    const keyPrefix = rawKey.substring(0, 8);
+    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const now = new Date().toISOString();
+
+    const apiKey: ApiKey = {
+      id: crypto.randomUUID(),
+      orgId,
+      name,
+      keyPrefix,
+      keyHash,
+      permissions,
+      isActive: true,
+      totalRequests: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const db = readDb();
+    if (!db.apiKeys) db.apiKeys = [];
+    db.apiKeys.push(apiKey);
+    writeDb(db);
+
+    return { apiKey, rawKey };
+  },
+
+  async verifyKey(rawKey: string): Promise<{ valid: boolean; apiKey?: ApiKey }> {
+    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const db = readDb();
+    const key = (db.apiKeys || []).find((k) => k.keyHash === keyHash && k.isActive);
+    if (!key) return { valid: false };
+
+    // Update last used & request count
+    key.lastUsedAt = new Date().toISOString();
+    key.totalRequests = (key.totalRequests || 0) + 1;
+    writeDb(db);
+
+    return { valid: true, apiKey: key };
+  },
+
+  async revokeKey(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.apiKeys) return false;
+    const key = db.apiKeys.find((k) => k.id === id);
+    if (!key) return false;
+    key.isActive = false;
+    key.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return true;
+  },
+
+  async logUsage(log: Omit<ApiUsageLog, 'id' | 'timestamp'>): Promise<void> {
+    const record: ApiUsageLog = {
+      ...log,
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    const db = readDb();
+    if (!db.apiUsageLogs) db.apiUsageLogs = [];
+    db.apiUsageLogs.unshift(record);
+    if (db.apiUsageLogs.length > 2000) db.apiUsageLogs.pop();
+    writeDb(db);
+  },
+};
+
+// ================= TEAM REPOSITORY =================
+export const teamRepo = {
+  async listByOrg(orgId: string): Promise<OrganizationTeamMember[]> {
+    const db = readDb();
+    return (db.organizationTeamMembers || []).filter((m) => m.orgId === orgId);
+  },
+
+  async inviteMember(data: Omit<OrganizationTeamMember, 'id' | 'createdAt' | 'updatedAt'>): Promise<OrganizationTeamMember> {
+    const now = new Date().toISOString();
+    const member: OrganizationTeamMember = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.organizationTeamMembers) db.organizationTeamMembers = [];
+    db.organizationTeamMembers.push(member);
+    writeDb(db);
+    return member;
+  },
+
+  async updateRole(id: string, role: OrganizationTeamMember['role'], permissions?: string[]): Promise<boolean> {
+    const db = readDb();
+    if (!db.organizationTeamMembers) return false;
+    const member = db.organizationTeamMembers.find((m) => m.id === id);
+    if (!member) return false;
+    member.role = role;
+    if (permissions) member.permissions = permissions;
+    member.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return true;
+  },
+
+  async removeMember(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.organizationTeamMembers) return false;
+    const initLen = db.organizationTeamMembers.length;
+    db.organizationTeamMembers = db.organizationTeamMembers.filter((m) => m.id !== id);
+    writeDb(db);
+    return db.organizationTeamMembers.length < initLen;
+  },
+};
+
+// ================= CUSTOM TEMPLATE REPOSITORY =================
+export const customTemplateRepo = {
+  async listByOrg(orgId: string): Promise<CustomTemplate[]> {
+    const db = readDb();
+    return (db.customTemplates || []).filter((t) => t.orgId === orgId);
+  },
+
+  async create(data: Omit<CustomTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<CustomTemplate> {
+    const now = new Date().toISOString();
+    const template: CustomTemplate = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const db = readDb();
+    if (!db.customTemplates) db.customTemplates = [];
+    db.customTemplates.push(template);
+    writeDb(db);
+    return template;
+  },
+
+  async update(id: string, updates: Partial<CustomTemplate>): Promise<CustomTemplate | null> {
+    const now = new Date().toISOString();
+    const db = readDb();
+    if (!db.customTemplates) db.customTemplates = [];
+    const index = db.customTemplates.findIndex((t) => t.id === id);
+    if (index === -1) return null;
+    db.customTemplates[index] = { ...db.customTemplates[index], ...updates, updatedAt: now };
+    writeDb(db);
+    return db.customTemplates[index];
+  },
+
+  async delete(id: string): Promise<boolean> {
+    const db = readDb();
+    if (!db.customTemplates) return false;
+    const initLen = db.customTemplates.length;
+    db.customTemplates = db.customTemplates.filter((t) => t.id !== id);
+    writeDb(db);
+    return db.customTemplates.length < initLen;
+  },
+};
+
+// ================= AI REVIEW REPOSITORY =================
+export const aiReviewRepo = {
+  async saveReview(data: Omit<AiDocumentReview, 'id' | 'createdAt'>): Promise<AiDocumentReview> {
+    const review: AiDocumentReview = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    };
+    const db = readDb();
+    if (!db.aiDocumentReviews) db.aiDocumentReviews = [];
+    db.aiDocumentReviews.unshift(review);
+    writeDb(db);
+    return review;
+  },
+
+  async getReview(id: string): Promise<AiDocumentReview | null> {
+    const db = readDb();
+    return (db.aiDocumentReviews || []).find((r) => r.id === id) || null;
+  },
+
+  async listByDocument(documentId: string): Promise<AiDocumentReview[]> {
+    const db = readDb();
+    return (db.aiDocumentReviews || []).filter((r) => r.documentId === documentId);
+  },
+};
+
 
