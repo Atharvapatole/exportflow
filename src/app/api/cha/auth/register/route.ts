@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       message: 'CHA account registered successfully.',
-      redirectUrl: '/cha/dashboard',
+      redirectUrl: '/cha/activate-trial',
       user: {
         id: newUser.id,
         name: newUser.name,

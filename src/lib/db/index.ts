@@ -1434,22 +1434,26 @@ export const walletRepo = {
     credits: Partial<DocumentAllowance>,
     source: 'lifetime' | 'subscription'
   ): Promise<OrganizationWallet> {
-    const db = readDb();
     const wallet = await this.getOrCreateWallet(organizationId);
+    const db = readDb();
     const index = db.organizationWallets.findIndex((w) => w.organizationId === organizationId);
 
     const targetCredits = source === 'lifetime' ? wallet.lifetimeCredits : wallet.subscriptionCredits;
 
-    if (credits.quotations) targetCredits.quotations += credits.quotations;
-    if (credits.proformaInvoices) targetCredits.proformaInvoices += credits.proformaInvoices;
-    if (credits.commercialInvoices) targetCredits.commercialInvoices += credits.commercialInvoices;
-    if (credits.packingLists) targetCredits.packingLists += credits.packingLists;
+    if (credits.quotations) targetCredits.quotations = (targetCredits.quotations || 0) + credits.quotations;
+    if (credits.proformaInvoices) targetCredits.proformaInvoices = (targetCredits.proformaInvoices || 0) + credits.proformaInvoices;
+    if (credits.commercialInvoices) targetCredits.commercialInvoices = (targetCredits.commercialInvoices || 0) + credits.commercialInvoices;
+    if (credits.packingLists) targetCredits.packingLists = (targetCredits.packingLists || 0) + credits.packingLists;
     if (credits.aiMessages) {
       targetCredits.aiMessages = (targetCredits.aiMessages || 0) + credits.aiMessages;
     }
 
     wallet.updatedAt = new Date().toISOString();
-    db.organizationWallets[index] = wallet;
+    if (index !== -1) {
+      db.organizationWallets[index] = wallet;
+    } else {
+      db.organizationWallets.push(wallet);
+    }
     writeDb(db);
     return wallet;
   },
@@ -1536,6 +1540,9 @@ export const subscriptionRepo = {
   },
 
   async getOrCreateSubscription(organizationId: string): Promise<OrganizationSubscription> {
+    if (!organizationId) {
+      throw new Error('organizationId is required for getOrCreateSubscription');
+    }
     const db = readDb();
     if (!db.organizationSubscriptions) db.organizationSubscriptions = [];
     let sub = db.organizationSubscriptions.find((s) => s.organizationId === organizationId);
@@ -1572,12 +1579,15 @@ export const subscriptionRepo = {
     return sub;
   },
 
-  async activateTrial(organizationId: string): Promise<{ success: boolean; subscription?: OrganizationSubscription; message?: string }> {
+  async activateTrial(
+    organizationId: string,
+    requestedPlanId?: string
+  ): Promise<{ success: boolean; subscription?: OrganizationSubscription; message?: string }> {
     const db = readDb();
     const sub = await this.getOrCreateSubscription(organizationId);
 
     if (sub.hasUsedTrial) {
-      return { success: false, message: 'Your organization has already redeemed the 3-day Free Trial.' };
+      return { success: false, message: 'Your organization has already redeemed the 3-day Free Trial. Please choose a paid plan to continue.' };
     }
 
     const org = await orgRepo.findById(organizationId);
@@ -1591,7 +1601,34 @@ export const subscriptionRepo = {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Exactly 3 days
 
-    sub.planId = isCha ? 'cha_professional' : 'professional';
+    let chosenPlan: string = isCha ? 'cha_professional' : 'professional';
+    let chosenAllowances: DocumentAllowance = isCha
+      ? { quotations: 200, proformaInvoices: 150, commercialInvoices: 150, packingLists: 150, aiMessages: 500 }
+      : { quotations: 50, proformaInvoices: 30, commercialInvoices: 30, packingLists: 30, aiMessages: 200 };
+
+    if (requestedPlanId) {
+      if (requestedPlanId === 'starter') {
+        chosenPlan = 'starter';
+        chosenAllowances = { quotations: 15, proformaInvoices: 10, commercialInvoices: 10, packingLists: 10, aiMessages: 50 };
+      } else if (requestedPlanId === 'professional') {
+        chosenPlan = 'professional';
+        chosenAllowances = { quotations: 50, proformaInvoices: 30, commercialInvoices: 30, packingLists: 30, aiMessages: 200 };
+      } else if (requestedPlanId === 'business') {
+        chosenPlan = 'business';
+        chosenAllowances = { quotations: 150, proformaInvoices: 100, commercialInvoices: 100, packingLists: 100, aiMessages: 600 };
+      } else if (requestedPlanId === 'cha_starter') {
+        chosenPlan = 'cha_starter';
+        chosenAllowances = { quotations: 50, proformaInvoices: 30, commercialInvoices: 30, packingLists: 30, aiMessages: 100 };
+      } else if (requestedPlanId === 'cha_professional') {
+        chosenPlan = 'cha_professional';
+        chosenAllowances = { quotations: 200, proformaInvoices: 150, commercialInvoices: 150, packingLists: 150, aiMessages: 500 };
+      } else if (requestedPlanId === 'cha_enterprise') {
+        chosenPlan = 'cha_enterprise';
+        chosenAllowances = { quotations: 600, proformaInvoices: 500, commercialInvoices: 500, packingLists: 500, aiMessages: 1500 };
+      }
+    }
+
+    sub.planId = chosenPlan as any;
     sub.status = 'trial';
     sub.trialStartDate = now.toISOString();
     sub.trialEndDate = trialEnd.toISOString();
@@ -1606,39 +1643,68 @@ export const subscriptionRepo = {
     writeDb(db);
 
     // Grant credits for the trial period
-    if (isCha) {
-      await walletRepo.addCredits(
-        organizationId,
-        {
-          quotations: 200,
-          proformaInvoices: 150,
-          commercialInvoices: 150,
-          packingLists: 150,
-          aiMessages: 500,
-        },
-        'subscription'
-      );
-    } else {
-      await walletRepo.addCredits(
-        organizationId,
-        {
-          quotations: 50,
-          proformaInvoices: 30,
-          commercialInvoices: 30,
-          packingLists: 30,
-          aiMessages: 200,
-        },
-        'subscription'
-      );
-    }
+    await walletRepo.addCredits(organizationId, chosenAllowances, 'subscription');
 
     return {
       success: true,
       subscription: sub,
-      message: isCha
-        ? '3-Day CHA Professional Trial activated successfully!'
-        : '3-Day Professional Trial activated successfully!',
+      message: `3-Day Free Trial of ${chosenPlan.replace(/_/g, ' ')} activated successfully!`,
     };
+  },
+
+  async checkDashboardAccess(organizationId: string): Promise<{
+    allowed: boolean;
+    reason: 'active_paid_plan' | 'active_trial' | 'trial_not_activated' | 'trial_expired';
+    subscription: OrganizationSubscription;
+  }> {
+    const sub = await this.getOrCreateSubscription(organizationId);
+    const now = new Date();
+
+    // 1. Check if paid plan is active
+    const isPaidPlan =
+      sub.planId &&
+      sub.planId !== 'free' &&
+      sub.planId !== 'free_trial' &&
+      sub.planId !== 'cha_free_trial';
+
+    if (sub.status === 'active' && isPaidPlan) {
+      if (sub.currentPeriodEnd && new Date(sub.currentPeriodEnd) < now) {
+        sub.status = 'expired';
+        const db = readDb();
+        const index = (db.organizationSubscriptions || []).findIndex((s) => s.organizationId === organizationId);
+        if (index !== -1) {
+          db.organizationSubscriptions[index] = sub;
+          writeDb(db);
+        }
+        return { allowed: false, reason: 'trial_expired', subscription: sub };
+      }
+      return { allowed: true, reason: 'active_paid_plan', subscription: sub };
+    }
+
+    // 2. Check if currently in 3-day free trial
+    if (sub.status === 'trial') {
+      if (sub.trialEndDate && new Date(sub.trialEndDate) < now) {
+        sub.status = 'expired';
+        sub.planId = 'free';
+        sub.updatedAt = now.toISOString();
+        const db = readDb();
+        const index = (db.organizationSubscriptions || []).findIndex((s) => s.organizationId === organizationId);
+        if (index !== -1) {
+          db.organizationSubscriptions[index] = sub;
+          writeDb(db);
+        }
+        return { allowed: false, reason: 'trial_expired', subscription: sub };
+      }
+      return { allowed: true, reason: 'active_trial', subscription: sub };
+    }
+
+    // 3. User has NOT activated their 3-day free trial yet
+    if (!sub.hasUsedTrial) {
+      return { allowed: false, reason: 'trial_not_activated', subscription: sub };
+    }
+
+    // 4. Trial expired and no active paid plan
+    return { allowed: false, reason: 'trial_expired', subscription: sub };
   },
 
   async updateSubscriptionByAdmin(
@@ -1704,7 +1770,7 @@ export const subscriptionRepo = {
 
   async activatePlan(
     organizationId: string,
-    planId: 'starter' | 'growth' | 'business',
+    planId: string,
     billingCycle: 'monthly' | 'annual',
     razorpaySubscriptionId?: string
   ): Promise<OrganizationSubscription> {
@@ -1716,8 +1782,9 @@ export const subscriptionRepo = {
     const periodDays = billingCycle === 'annual' ? 365 : 30;
     const periodEnd = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
 
-    sub.planId = planId;
+    sub.planId = planId as any;
     sub.status = 'active';
+    sub.hasUsedTrial = true;
     sub.billingCycle = billingCycle;
     sub.currentPeriodStart = now.toISOString();
     sub.currentPeriodEnd = periodEnd.toISOString();

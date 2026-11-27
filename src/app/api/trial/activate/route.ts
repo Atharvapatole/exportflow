@@ -9,14 +9,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await subscriptionRepo.activateTrial(auth.organization.id);
+    const body = await req.json().catch(() => ({}));
+    const requestedPlanId = body.planId;
+
+    const result = await subscriptionRepo.activateTrial(auth.organization.id, requestedPlanId);
     if (!result.success) {
       return NextResponse.json({ error: result.message }, { status: 400 });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'ExportFlow 3-Day Growth Trial activated successfully!',
+      message: result.message || 'ExportFlow 3-Day Free Trial activated successfully!',
       subscription: result.subscription,
     });
   } catch (error: any) {

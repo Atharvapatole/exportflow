@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { userRepo, orgRepo, adminRepo, platformAdminRepo } from '@/lib/db';
+import { userRepo, orgRepo, adminRepo, platformAdminRepo, subscriptionRepo } from '@/lib/db';
 import {
   verifyPassword,
   hashPassword,
@@ -258,7 +258,19 @@ export async function POST(req: NextRequest) {
       userOrg?.businessType?.toLowerCase().includes('cha') ||
       userOrg?.name?.toLowerCase().includes('custom');
 
-    const redirectUrl = isChaOrg ? '/cha/dashboard' : '/dashboard';
+    let redirectUrl = isChaOrg ? '/cha/dashboard' : '/dashboard';
+
+    // Check trial & subscription access gate
+    if (!isSuperAdmin && orgId) {
+      const access = await subscriptionRepo.checkDashboardAccess(orgId);
+      if (!access.allowed) {
+        if (access.reason === 'trial_not_activated') {
+          redirectUrl = isChaOrg ? '/cha/activate-trial' : '/activate-trial';
+        } else if (access.reason === 'trial_expired') {
+          redirectUrl = isChaOrg ? '/cha/trial-expired' : '/trial-expired';
+        }
+      }
+    }
 
     const response = NextResponse.json({
       success: true,

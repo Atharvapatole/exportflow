@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { userRepo, orgRepo, adminRepo, platformAdminRepo } from '@/lib/db';
+import { userRepo, orgRepo, adminRepo, platformAdminRepo, subscriptionRepo } from '@/lib/db';
 import {
   verifyPassword,
   setSessionCookie,
@@ -161,10 +161,23 @@ export async function POST(req: NextRequest) {
     await setSessionCookie(sessionData);
 
     const token = createSessionToken(sessionData);
+
+    let redirectUrl = '/cha/dashboard';
+    if (!isSuperAdmin && orgId) {
+      const access = await subscriptionRepo.checkDashboardAccess(orgId);
+      if (!access.allowed) {
+        if (access.reason === 'trial_not_activated') {
+          redirectUrl = '/cha/activate-trial';
+        } else if (access.reason === 'trial_expired') {
+          redirectUrl = '/cha/trial-expired';
+        }
+      }
+    }
+
     const response = NextResponse.json({
       success: true,
       message: 'CHA login successful',
-      redirectUrl: '/cha/dashboard',
+      redirectUrl,
     });
 
     response.cookies.set(SESSION_COOKIE_NAME, token, {

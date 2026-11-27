@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       message: 'Account created successfully and saved in Supabase',
-      redirectUrl: '/dashboard',
+      redirectUrl: '/activate-trial',
     });
 
     response.cookies.set(SESSION_COOKIE_NAME, token, {

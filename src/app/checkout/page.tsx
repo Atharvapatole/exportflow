@@ -159,7 +159,8 @@ function CheckoutContent() {
             const verifyData = await verifyRes.json();
             if (verifyRes.ok && verifyData.success) {
               alert('Payment successful! Your ExportFlow subscription and credits are activated.');
-              router.push('/dashboard');
+              const isChaPlan = String(itemId).startsWith('cha_') || String(planId).startsWith('cha_');
+              router.push(isChaPlan ? '/cha/dashboard' : '/dashboard');
               router.refresh();
             } else {
               alert(verifyData.error || 'Payment verification failed. Please contact support.');

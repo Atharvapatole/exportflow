@@ -26,10 +26,14 @@ export function PricingCardSection() {
   const [activeTab, setActiveTab] = useState<'exporter' | 'cha' | 'packs'>('exporter');
   const [activatingTrial, setActivatingTrial] = useState(false);
 
-  const handleClaimTrial = async (targetType: 'exporter' | 'cha') => {
+  const handleClaimTrial = async (targetType: 'exporter' | 'cha', planId?: string) => {
     try {
       setActivatingTrial(true);
-      const res = await fetch('/api/trial/activate', { method: 'POST' });
+      const res = await fetch('/api/trial/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      });
       const data = await res.json();
       if (res.status === 401) {
         router.push(targetType === 'cha' ? '/cha/register?trial=3days' : '/register?trial=3days');
@@ -38,8 +42,8 @@ export function PricingCardSection() {
       if (res.ok) {
         alert(
           targetType === 'cha'
-            ? 'Congratulations! Your 3-Day CHA Professional Trial has been activated.'
-            : 'Congratulations! Your 3-Day Exporter Professional Trial has been activated.'
+            ? 'Congratulations! Your 3-Day CHA Free Trial has been activated.'
+            : 'Congratulations! Your 3-Day Exporter Free Trial has been activated.'
         );
         router.push(targetType === 'cha' ? '/cha/dashboard' : '/dashboard');
         router.refresh();
@@ -246,7 +250,7 @@ export function PricingCardSection() {
                   <Button
                     variant="outline"
                     className="w-full text-xs font-semibold border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                    onClick={() => handleClaimTrial('exporter')}
+                    onClick={() => handleClaimTrial('exporter', plan.id)}
                     disabled={activatingTrial}
                   >
                     1: Claim 3 Days Free Trial
@@ -368,7 +372,7 @@ export function PricingCardSection() {
                   <Button
                     variant="outline"
                     className="w-full text-xs font-semibold border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                    onClick={() => handleClaimTrial('cha')}
+                    onClick={() => handleClaimTrial('cha', plan.id)}
                     disabled={activatingTrial}
                   >
                     1: Claim 3 Days Free Trial

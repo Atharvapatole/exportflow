@@ -1,6 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentContext } from '@/lib/auth';
+import { subscriptionRepo } from '@/lib/db';
 import { ChaSidebar } from '@/components/layout/ChaSidebar';
 import { ChaHeader } from '@/components/layout/ChaHeader';
 
@@ -26,6 +27,18 @@ export default async function ChaDashboardLayout({
   // If a standard exporter account lands here, redirect them to exporter dashboard
   if (!isCha && !ctx.isSuperAdmin) {
     redirect('/dashboard');
+  }
+
+  // Strict Trial & Subscription Paywall Gate for CHA Brokers
+  if (!ctx.isSuperAdmin && ctx.organization?.id) {
+    const access = await subscriptionRepo.checkDashboardAccess(ctx.organization.id);
+    if (!access.allowed) {
+      if (access.reason === 'trial_not_activated') {
+        redirect('/cha/activate-trial');
+      } else if (access.reason === 'trial_expired') {
+        redirect('/cha/trial-expired');
+      }
+    }
   }
 
   const firmName = ctx.organization?.name || 'Customs Brokerage Firm';

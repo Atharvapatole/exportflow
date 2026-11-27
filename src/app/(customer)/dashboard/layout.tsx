@@ -1,6 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { getCurrentContext } from '@/lib/auth';
+import { subscriptionRepo } from '@/lib/db';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { CustomerHeader } from '@/components/layout/CustomerHeader';
 
@@ -26,6 +27,18 @@ export default async function CustomerDashboardLayout({
 
   if (isChaOrg && !ctx.isSuperAdmin) {
     redirect('/cha/dashboard');
+  }
+
+  // Strict Trial & Subscription Paywall Gate
+  if (!ctx.isSuperAdmin && ctx.organization?.id) {
+    const access = await subscriptionRepo.checkDashboardAccess(ctx.organization.id);
+    if (!access.allowed) {
+      if (access.reason === 'trial_not_activated') {
+        redirect('/activate-trial');
+      } else if (access.reason === 'trial_expired') {
+        redirect('/trial-expired');
+      }
+    }
   }
 
   const companyName = ctx.organization?.name || 'My Export Company';

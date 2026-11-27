@@ -52,10 +52,17 @@ export async function POST(req: NextRequest) {
         await walletRepo.addCredits(log.organizationId, pack.credits, 'lifetime');
       }
     } else if (log.itemType === 'subscription') {
-      const sub = PRICING_CATALOG.subscriptions.find((s) => s.id === log.itemId);
+      const allPlans = [
+        ...PRICING_CATALOG.exporterPlans,
+        ...PRICING_CATALOG.chaPlans,
+        ...(PRICING_CATALOG.subscriptions || []),
+      ];
+      const sub = allPlans.find((s) => s.id === log.itemId);
       if (sub) {
         await subscriptionRepo.activatePlan(log.organizationId, sub.id as any, 'monthly');
-        await walletRepo.addCredits(log.organizationId, sub.allowances, 'subscription');
+        if (sub.allowances) {
+          await walletRepo.addCredits(log.organizationId, sub.allowances, 'subscription');
+        }
       }
     }
 
